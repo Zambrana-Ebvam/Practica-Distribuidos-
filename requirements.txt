@@ -1,0 +1,17 @@
+cassandra-driver==3.29.2
+pandas==2.2.3
+streamlit==1.45.0
+folium==0.19.5
+streamlit-folium==0.25.0
+plotly==6.0.1
+python-dateutil==2.9.0.post0
+pyarrow
+reportlab
+qrcode[pil]
+fastapi
+uvicorn
+python-multipart
+pydantic
+reportlab
+qrcode[pil]
+pika

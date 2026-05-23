@@ -1,0 +1,56 @@
+services:
+  cassandra-node1:
+    image: cassandra:4.1
+    container_name: cassandra-node1
+    hostname: cassandra-node1
+    ports:
+      - "9042:9042"
+    environment:
+      - CASSANDRA_CLUSTER_NAME=SEMAPA_CLUSTER
+      - CASSANDRA_DC=DC1
+      - CASSANDRA_RACK=RACK1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      - CASSANDRA_SEEDS=cassandra-node1
+      - MAX_HEAP_SIZE=1G
+      - HEAP_NEWSIZE=256M
+    volumes:
+      - cassandra-node1-data:/var/lib/cassandra
+    networks:
+      - cassandra-net
+
+  cassandra-node2:
+    image: cassandra:4.1
+    container_name: cassandra-node2
+    hostname: cassandra-node2
+    depends_on:
+      - cassandra-node1
+    environment:
+      - CASSANDRA_CLUSTER_NAME=SEMAPA_CLUSTER
+      - CASSANDRA_DC=DC1
+      - CASSANDRA_RACK=RACK1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      - CASSANDRA_SEEDS=cassandra-node1
+      - MAX_HEAP_SIZE=1G
+      - HEAP_NEWSIZE=256M
+    volumes:
+      - cassandra-node2-data:/var/lib/cassandra
+    networks:
+      - cassandra-net
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: semapa-rabbitmq
+    hostname: semapa-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - cassandra-net
+
+volumes:
+  cassandra-node1-data:
+  cassandra-node2-data:
+
+networks:
+  cassandra-net:
+    driver: bridge
