@@ -132,21 +132,24 @@ function App() {
     setDistrito(primero);
 
     try {
-  const geo = await axios.get("/cochabamba_distritos.geojson");
+      const geo = await axios.get("/cochabamba_distritos.geojson");
+      console.log("GeoJSON cargado:", geo.data);
+      console.log("Cantidad de features:", geo.data.features?.length);
 
-    if (
-      geo.data &&
-      geo.data.type &&
-      ["FeatureCollection", "Feature", "Polygon", "MultiPolygon"].includes(geo.data.type)
-    ) {
-      setGeojson(geo.data);
-    } else {
-      console.warn("GeoJSON inválido. Se usará solo OpenStreetMap.");
+      if (
+        geo.data &&
+        geo.data.type &&
+        ["FeatureCollection", "Feature", "Polygon", "MultiPolygon"].includes(geo.data.type)
+      ) {
+        setGeojson(geo.data);
+      } else {
+        console.warn("GeoJSON inválido. Se usará solo OpenStreetMap.");
+        setGeojson(null);
+      }
+    } catch (error) {
+      console.error("Error cargando GeoJSON:", error);
       setGeojson(null);
     }
-  } catch {
-    setGeojson(null);
-  }
   }
 
   async function cargarDistrito() {
@@ -359,7 +362,7 @@ function App() {
 
             <div className="panel">
               <h3>Alertas ODS por distrito</h3>
-              <table>
+              <table className="data-table">
                 <thead>
                   <tr>
                     <th>Distrito</th>
@@ -465,7 +468,7 @@ function App() {
 
             <div className="panel">
               <h3>Tabla de anomalías</h3>
-              <table>
+              <table className="data-table">
                 <thead>
                   <tr>
                     <th>Cuenta</th>
@@ -697,16 +700,61 @@ function MapaGeneral({ distritos, distritoActual, geojson, onDistritoClick }) {
 
   const maxConsumo = Math.max(...distritos.map((d) => Number(d.consumo_m3 || 0)), 1);
 
+  const distritoPolygonStyle = {
+    color: '#2c3e50',
+    weight: 2,
+    opacity: 0.8,
+    fillColor: '#3498db',
+    fillOpacity: 0.25
+  };
+
+  const highlightStyle = {
+    color: '#c0392b',
+    weight: 3,
+    opacity: 1,
+    fillColor: '#e74c3c',
+    fillOpacity: 0.5
+  };
+
   return (
     <MapContainer center={center} zoom={12} className="map">
       <TileLayer
-        attribution="OpenStreetMap"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
       {distritoActual && <FlyToDistrito lat={distritoActual.lat} lon={distritoActual.lon} />}
 
-      {geojson?.type && <GeoJSON data={geojson} />}
+      {geojson && geojson.type === "FeatureCollection" && geojson.features && geojson.features.length > 0 && (
+        <GeoJSON 
+          data={geojson} 
+          style={() => distritoPolygonStyle}
+          onEachFeature={(feature, layer) => {
+            const nombre = feature?.properties?.nombre || 
+                          feature?.properties?.DISTRITO || 
+                          feature?.properties?.NAME ||
+                          feature?.properties?.name ||
+                          feature?.properties?.distrito ||
+                          'Distrito';
+            
+            layer.bindPopup(`
+              <div style="font-family: Arial, sans-serif; padding: 8px; min-width: 150px;">
+                <strong style="color: #2c3e50;">🏘️ ${nombre}</strong><br/>
+                <small>Distrito de Cochabamba</small>
+              </div>
+            `);
+            
+            layer.on('mouseover', () => {
+              layer.setStyle(highlightStyle);
+              layer.bringToFront();
+            });
+            
+            layer.on('mouseout', () => {
+              layer.setStyle(distritoPolygonStyle);
+            });
+          }}
+        />
+      )}
 
       {distritos.map((d) => {
         if (!d.lat || !d.lon) return null;
@@ -743,27 +791,82 @@ function MapaCuentas({ cuentas, distritoActual, geojson, cuentaSeleccionada, onC
     ? [distritoActual.lat, distritoActual.lon]
     : [-17.3895, -66.1568];
 
+  const getDistritoStyle = () => {
+    return {
+      color: '#2c3e50',
+      weight: 2,
+      opacity: 0.8,
+      fillColor: '#3498db',
+      fillOpacity: 0.25
+    };
+  };
+
+  const highlightStyle = {
+    color: '#c0392b',
+    weight: 3,
+    opacity: 1,
+    fillColor: '#e74c3c',
+    fillOpacity: 0.5
+  };
+
+  const selectedIcon = new L.Icon({
+    iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+    shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+    iconSize: [35, 57],
+    iconAnchor: [17, 57],
+    popupAnchor: [1, -34]
+  });
+
   return (
     <MapContainer center={center} zoom={13} className="map big-map">
       <TileLayer
-        attribution="OpenStreetMap"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
       {distritoActual && <FlyToDistrito lat={distritoActual.lat} lon={distritoActual.lon} />}
 
-      {geojson?.type && <GeoJSON data={geojson} />}
+      {geojson && geojson.type === "FeatureCollection" && geojson.features && geojson.features.length > 0 && (
+        <GeoJSON 
+          data={geojson} 
+          style={getDistritoStyle}
+          onEachFeature={(feature, layer) => {
+            const nombre = feature?.properties?.nombre || 
+                          feature?.properties?.DISTRITO || 
+                          feature?.properties?.NAME ||
+                          feature?.properties?.name ||
+                          feature?.properties?.distrito ||
+                          'Área';
+            
+            layer.bindPopup(`
+              <div style="font-family: Arial, sans-serif; padding: 8px; min-width: 150px;">
+                <strong style="color: #2c3e50;">🏘️ ${nombre}</strong><br/>
+                <small>Área administrativa de Cochabamba</small>
+              </div>
+            `);
+            
+            layer.on('mouseover', () => {
+              layer.setStyle(highlightStyle);
+              layer.bringToFront();
+            });
+            
+            layer.on('mouseout', () => {
+              layer.setStyle(getDistritoStyle());
+            });
+          }}
+        />
+      )}
 
       {cuentas.slice(0, 900).map((c) => {
         if (!c.latitud || !c.longitud) return null;
 
-        const selected = cuentaSeleccionada?.cuenta_id === c.cuenta_id;
+        const isSelected = cuentaSeleccionada?.cuenta_id === c.cuenta_id;
 
         return (
           <Marker
             key={c.cuenta_id}
             position={[c.latitud, c.longitud]}
-            icon={markerIcon}
+            icon={isSelected ? selectedIcon : markerIcon}
             eventHandlers={{
               click: () => onCuentaClick(c),
             }}
