@@ -1,0 +1,15 @@
+.ger-page {
+  display: block;
+}
+
+.ger-page h2 {
+  margin: 12px 0 18px;
+}
+
+.ger-page table {
+  margin-top: 12px;
+}
+
+.ger-page .recharts-wrapper {
+  margin: 0 auto;
+}

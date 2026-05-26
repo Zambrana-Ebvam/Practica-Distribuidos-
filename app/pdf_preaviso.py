@@ -14,23 +14,197 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "outputs", "preavisos")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
-TARIFAS_BS = {
-    "RESIDENCIAL": 2.80,
-    "COMERCIAL": 10.43,
-    "COMERCIAL ESPECIAL": 12.16,
-    "INDUSTRIAL": 9.39,
-    "PREFERENCIAL": 4.58,
-    "SOCIAL": 7.64,
-    "R1": 1.39,
-    "R2": 2.78,
-    "R3": 5.21,
-    "R4": 8.69,
-    "C": 10.43,
-    "CE": 12.16,
-    "I": 9.39,
-    "P": 4.58,
-    "S": 7.64
+TARIFAS_ESCALONADAS = {
+    "R1": {
+        "fijo": 16.74,
+        "rangos": [
+            (13, 25, 1.10),
+            (26, 50, 1.26),
+            (51, 75, 1.87),
+            (76, 100, 2.39),
+            (101, 150, 2.84),
+            (151, None, 3.34),
+        ],
+    },
+    "R2": {
+        "fijo": 33.37,
+        "rangos": [
+            (13, 25, 1.78),
+            (26, 50, 1.98),
+            (51, 75, 2.96),
+            (76, 100, 3.59),
+            (101, 150, 4.16),
+            (151, None, 4.75),
+        ],
+    },
+    "R3": {
+        "fijo": 62.57,
+        "rangos": [
+            (13, 25, 2.17),
+            (26, 50, 3.38),
+            (51, 75, 3.76),
+            (76, 100, 4.36),
+            (101, 150, 4.96),
+            (151, None, 5.54),
+        ],
+    },
+    "R4": {
+        "fijo": 104.22,
+        "rangos": [
+            (13, 25, 2.58),
+            (26, 50, 2.80),
+            (51, 75, 4.39),
+            (76, 100, 4.99),
+            (101, 150, 5.59),
+            (151, None, 6.20),
+        ],
+    },
+    "C": {
+        "fijo": 125.16,
+        "rangos": [
+            (13, 25, 5.35),
+            (26, 50, 5.73),
+            (51, 75, 6.14),
+            (76, 100, 6.53),
+            (101, 150, 6.92),
+            (151, None, 7.34),
+        ],
+    },
+    "CE": {
+        "fijo": 145.98,
+        "rangos": [
+            (13, 25, 8.72),
+            (26, 50, 8.72),
+            (51, 75, 9.12),
+            (76, 100, 9.50),
+            (101, 150, 9.90),
+            (151, None, 10.29),
+        ],
+    },
+    "I": {
+        "fijo": 112.64,
+        "rangos": [
+            (13, 25, 4.95),
+            (26, 50, 5.66),
+            (51, 75, 5.94),
+            (76, 100, 6.33),
+            (101, 150, 6.73),
+            (151, None, 7.11),
+        ],
+    },
+    "P": {
+        "fijo": 54.98,
+        "rangos": [
+            (13, 25, 2.17),
+            (26, 50, 2.39),
+            (51, 75, 2.98),
+            (76, 100, 3.35),
+            (101, 150, 3.76),
+            (151, None, 4.10),
+        ],
+    },
+    "S": {
+        "fijo": 91.72,
+        "rangos": [
+            (13, 25, 3.57),
+            (26, 50, 3.77),
+            (51, 75, 3.96),
+            (76, 100, 4.35),
+            (101, 150, 4.75),
+            (151, None, 5.15),
+        ],
+    },
 }
+
+
+def normalizar_subcategoria(categoria, subcategoria=""):
+    categoria = str(categoria or "").upper().strip()
+    subcategoria = str(subcategoria or "").upper().strip()
+
+    if subcategoria in TARIFAS_ESCALONADAS:
+        return subcategoria
+
+    if categoria in TARIFAS_ESCALONADAS:
+        return categoria
+
+    if "COMERCIAL ESPECIAL" in categoria:
+        return "CE"
+
+    if "RESIDENCIAL" in categoria:
+        return "R2"
+
+    if "COMERCIAL" in categoria:
+        return "C"
+
+    if "INDUSTRIAL" in categoria:
+        return "I"
+
+    if "PREFERENCIAL" in categoria:
+        return "P"
+
+    if "SOCIAL" in categoria:
+        return "S"
+
+    return "R2"
+
+
+def calcular_factura_agua(consumo_m3, categoria, subcategoria=""):
+    consumo_m3 = max(float(consumo_m3 or 0), 0)
+    codigo = normalizar_subcategoria(categoria, subcategoria)
+    tarifa = TARIFAS_ESCALONADAS[codigo]
+
+    fijo = tarifa["fijo"]
+
+    detalle = [
+        {
+            "concepto": "Cargo fijo hasta 12 m3",
+            "m3": min(consumo_m3, 12),
+            "tarifa": fijo,
+            "subtotal": fijo,
+        }
+    ]
+
+    if consumo_m3 <= 12:
+        return {
+            "codigo_tarifa": codigo,
+            "consumo_m3": round(consumo_m3, 2),
+            "monto_bs": round(fijo, 2),
+            "detalle": detalle,
+        }
+
+    monto = fijo
+
+    for desde, hasta, precio in tarifa["rangos"]:
+        if consumo_m3 < desde:
+            continue
+
+        limite = hasta if hasta is not None else consumo_m3
+        m3_rango = min(consumo_m3, limite) - desde + 1
+
+        if m3_rango <= 0:
+            continue
+
+        subtotal = m3_rango * precio
+        monto += subtotal
+
+        detalle.append({
+            "concepto": f"Rango {desde}-{hasta if hasta else 'más'} m3",
+            "m3": round(m3_rango, 2),
+            "tarifa": precio,
+            "subtotal": round(subtotal, 2),
+        })
+
+    return {
+        "codigo_tarifa": codigo,
+        "consumo_m3": round(consumo_m3, 2),
+        "monto_bs": round(monto, 2),
+        "detalle": detalle,
+    }
+
+
+def obtener_tarifa(categoria, subcategoria=""):
+    codigo = normalizar_subcategoria(categoria, subcategoria)
+    return TARIFAS_ESCALONADAS[codigo]["fijo"]
 
 
 def limpiar_nombre_archivo(texto):
@@ -39,35 +213,6 @@ def limpiar_nombre_archivo(texto):
     return texto[:80]
 
 
-def obtener_tarifa(categoria, subcategoria=""):
-    categoria = str(categoria or "").upper().strip()
-    subcategoria = str(subcategoria or "").upper().strip()
-
-    if subcategoria in TARIFAS_BS:
-        return TARIFAS_BS[subcategoria]
-
-    if categoria in TARIFAS_BS:
-        return TARIFAS_BS[categoria]
-
-    if "RESIDENCIAL" in categoria:
-        return TARIFAS_BS["RESIDENCIAL"]
-
-    if "COMERCIAL ESPECIAL" in categoria:
-        return TARIFAS_BS["COMERCIAL ESPECIAL"]
-
-    if "COMERCIAL" in categoria:
-        return TARIFAS_BS["COMERCIAL"]
-
-    if "INDUSTRIAL" in categoria:
-        return TARIFAS_BS["INDUSTRIAL"]
-
-    if "PREFERENCIAL" in categoria:
-        return TARIFAS_BS["PREFERENCIAL"]
-
-    if "SOCIAL" in categoria:
-        return TARIFAS_BS["SOCIAL"]
-
-    return 3.00
 
 
 def crear_qr(texto):
@@ -97,8 +242,10 @@ def preparar_datos(detalle, consumo_periodo, historial):
     total_lecturas = int(consumo_periodo.get("total_lecturas", 0))
     lecturas_fallidas = int(consumo_periodo.get("lecturas_fallidas", 0))
 
-    tarifa = obtener_tarifa(categoria, subcategoria)
-    monto = consumo_m3 * tarifa
+    factura = calcular_factura_agua(consumo_m3, categoria, subcategoria)
+    tarifa = factura["codigo_tarifa"]
+    monto = factura["monto_bs"]
+    detalle_tarifario = factura["detalle"]
 
     qr_text = (
         f"SEMAPA|CUENTA={cuenta}|PERIODO={periodo}|"
@@ -120,6 +267,7 @@ def preparar_datos(detalle, consumo_periodo, historial):
         "lecturas_fallidas": lecturas_fallidas,
         "tarifa": tarifa,
         "monto": monto,
+        "detalle_tarifario": detalle_tarifario,
         "qr_text": qr_text,
         "historial": historial
     }
@@ -175,12 +323,25 @@ def generar_pdf_rollo(detalle, consumo_periodo, historial):
     c.setFont("Helvetica", 6.5)
     c.drawString(3 * mm, y, f"Consumo m3: {datos['consumo_m3']:.2f}")
     y -= 4 * mm
-    c.drawString(3 * mm, y, f"Tarifa Bs/m3: {datos['tarifa']:.2f}")
+    c.drawString(3 * mm, y, f"Tarifa: {datos['tarifa']}")
     y -= 4 * mm
     c.drawString(3 * mm, y, f"Lecturas: {datos['total_lecturas']}")
     y -= 4 * mm
     c.drawString(3 * mm, y, f"Lecturas fallidas: {datos['lecturas_fallidas']}")
     y -= 6 * mm
+    c.setFont("Helvetica-Bold", 6.5)
+    c.drawString(3 * mm, y, "Detalle por rangos:")
+    y -= 4 * mm
+
+    c.setFont("Helvetica", 5.5)
+    for item in datos["detalle_tarifario"][:7]:
+        concepto = item["concepto"][:22]
+        m3 = item["m3"]
+        subtotal = item["subtotal"]
+        c.drawString(3 * mm, y, f"{concepto} {m3:.1f}m3 Bs{subtotal:.2f}")
+        y -= 3.5 * mm
+
+    y -= 3 * mm
 
     c.setFont("Helvetica-Bold", 9)
     c.drawString(3 * mm, y, f"TOTAL Bs: {datos['monto']:.2f}")
@@ -273,12 +434,26 @@ def generar_pdf_media_carta(detalle, consumo_periodo, historial):
 
     c.setFont("Helvetica", 9)
     c.drawString(margin, y, f"Consumo registrado: {datos['consumo_m3']:.2f} m3")
-    c.drawString(260, y, f"Tarifa aplicada: Bs {datos['tarifa']:.2f} / m3")
+    c.drawString(260, y, f"Tarifa aplicada: {datos['tarifa']}")
     y -= 16
 
     c.drawString(margin, y, f"Lecturas registradas: {datos['total_lecturas']}")
     c.drawString(260, y, f"Lecturas fallidas: {datos['lecturas_fallidas']}")
     y -= 22
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(margin, y, "Detalle tarifario escalonado")
+    y -= 14
+
+    c.setFont("Helvetica", 8)
+    for item in datos["detalle_tarifario"][:7]:
+        c.drawString(
+            margin,
+            y,
+            f"{item['concepto']} | {item['m3']:.2f} m3 | Bs {item['tarifa']:.2f} | Subtotal Bs {item['subtotal']:.2f}"
+        )
+        y -= 11
+
+    y -= 8
 
     c.setFont("Helvetica-Bold", 16)
     c.drawString(margin, y, f"Importe estimado a pagar: Bs {datos['monto']:.2f}")
@@ -326,8 +501,8 @@ def calcular_mensaje_preaviso(detalle, consumo_periodo):
     categoria = detalle.get("categoria", "")
     subcategoria = detalle.get("subcategoria", "")
 
-    tarifa = obtener_tarifa(categoria, subcategoria)
-    monto = consumo_m3 * tarifa
+    factura = calcular_factura_agua(consumo_m3, categoria, subcategoria)
+    monto = factura["monto_bs"]
 
     primer_nombre = str(cliente).split(" ")[0].title()
 

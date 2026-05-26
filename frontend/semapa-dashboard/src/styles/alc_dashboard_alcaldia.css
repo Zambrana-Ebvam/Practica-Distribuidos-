@@ -1,0 +1,28 @@
+.alc-page {
+  display: block;
+}
+
+.alc-page h2 {
+  margin: 12px 0 18px;
+}
+
+.alc-stacked-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.alc-small-table {
+  font-size: 0.75rem;
+}
+
+.alc-small-table td:nth-child(2),
+.alc-small-table td:nth-child(6),
+.alc-small-table td:nth-child(8) {
+  max-width: 160px;
+}
+
+.alc-ods-table {
+  font-size: 0.8rem;
+  min-width: 1000px;
+}

@@ -1,92 +1,381 @@
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+
+import Sidebar from "./components/Sidebar";
+import LoadingState from "./components/LoadingState";
+import ErrorState from "./components/ErrorState";
+import LoginLocal from "./components/LoginLocal";
+
+import DashboardAlcaldia from "./pages/DashboardAlcaldia";
+import DashboardGerencia from "./pages/DashboardGerencia";
+import DashboardContabilidad from "./pages/DashboardContabilidad";
+import MapaDistrital from "./pages/MapaDistrital";
+import TotemAutoservicio from "./pages/TotemAutoservicio";
+
 import {
-  MapContainer,
-  TileLayer,
-  CircleMarker,
-  Marker,
-  Popup,
-  GeoJSON,
-  useMap,
-} from "react-leaflet";
-import L from "leaflet";
+  getConsumoCuenta,
+  getCuentaDetalle,
+  getCuentasDistrito,
+  getDashboardAlcaldia,
+  getDashboardContabilidad,
+  getDashboardGerencia,
+  getDistritos,
+  getResumenDistrito,
+} from "./services/dashboardService";
+
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  CartesianGrid,
-  Legend,
-  FunnelChart,
-  Funnel,
-  LabelList,
-} from "recharts";
+  enviarPreaviso,
+  generarPdfPreaviso,
+} from "./services/preavisoService";
 
-const API = "http://localhost:8000";
+import {
+  getDashboardInicialPorRol,
+  getTabsPermitidosPorRol,
+} from "./data/localUsers";
 
-const markerIcon = new L.Icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
+import "./styles/app_layout.css";
 
-function formatNumber(value) {
-  if (value === null || value === undefined) return "0";
-  return Number(value).toLocaleString("es-BO", {
-    maximumFractionDigits: 2,
-  });
+const MIN_DATOS_PARA_MOSTRAR_FILTRO = 2;
+
+function getUsuarioGuardado() {
+  try {
+    const data = localStorage.getItem("semapa_user");
+    return data ? JSON.parse(data) : null;
+  } catch {
+    localStorage.removeItem("semapa_user");
+    return null;
+  }
 }
 
-function formatMoney(value) {
-  if (value === null || value === undefined) return "Bs 0";
-  return `Bs ${Number(value).toLocaleString("es-BO", {
-    maximumFractionDigits: 2,
-  })}`;
+function toNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
 }
 
-function KpiCard({ title, value, subtitle }) {
-  return (
-    <div className="kpi-card">
-      <span>{title}</span>
-      <strong>{value}</strong>
-      {subtitle && <small>{subtitle}</small>}
-    </div>
-  );
+function round2(value) {
+  return Math.round(toNumber(value) * 100) / 100;
 }
 
-function FlyToDistrito({ lat, lon }) {
-  const map = useMap();
+function groupBySum(items, keyName, fields) {
+  const map = new Map();
 
-  useEffect(() => {
-    if (lat && lon) {
-      map.flyTo([lat, lon], 13, {
-        duration: 0.8,
+  items.forEach((item) => {
+    const key = String(item?.[keyName] || "SIN DATO");
+
+    if (!map.has(key)) {
+      map.set(key, {
+        [keyName]: key,
       });
     }
-  }, [lat, lon, map]);
 
-  return null;
+    const current = map.get(key);
+
+    fields.forEach((field) => {
+      current[field] = round2(
+        toNumber(current[field]) + toNumber(item?.[field])
+      );
+    });
+  });
+
+  return Array.from(map.values());
+}
+
+function combinarGerencia(datosPorDistrito, periodoActual) {
+  const dashboards = datosPorDistrito.map((item) => item.data).filter(Boolean);
+
+  const kpis = dashboards.reduce(
+    (acc, data) => {
+      const k = data?.kpis || {};
+
+      acc.total_consumo_acumulado_m3 += toNumber(k.total_consumo_acumulado_m3);
+      acc.total_medidores_activos += toNumber(k.total_medidores_activos);
+      acc.total_medidores += toNumber(k.total_medidores);
+      acc.sensores_con_errores += toNumber(k.sensores_con_errores);
+      acc.lecturas_app_movil += toNumber(k.lecturas_app_movil);
+      acc.lecturas_iot += toNumber(k.lecturas_iot);
+      acc.lecturas_fallidas += toNumber(k.lecturas_fallidas);
+      acc.total_cuentas += toNumber(k.total_cuentas);
+
+      return acc;
+    },
+    {
+      distrito: "TODOS",
+      periodo: periodoActual,
+      total_consumo_acumulado_m3: 0,
+      total_medidores_activos: 0,
+      total_medidores: 0,
+      sensores_con_errores: 0,
+      sensores_error_pct: 0,
+      lecturas_app_movil: 0,
+      lecturas_iot: 0,
+      lecturas_fallidas: 0,
+      lecturas_app_movil_pct: 0,
+      total_cuentas: 0,
+    }
+  );
+
+  kpis.sensores_error_pct =
+    kpis.total_medidores > 0
+      ? round2((kpis.sensores_con_errores / kpis.total_medidores) * 100)
+      : 0;
+
+  const totalLecturas =
+    kpis.lecturas_iot + kpis.lecturas_app_movil + kpis.lecturas_fallidas;
+
+  kpis.lecturas_app_movil_pct =
+    totalLecturas > 0
+      ? round2((kpis.lecturas_app_movil / totalLecturas) * 100)
+      : 0;
+
+  kpis.total_consumo_acumulado_m3 = round2(kpis.total_consumo_acumulado_m3);
+
+  const horas = groupBySum(
+    dashboards.flatMap((d) => d?.horas || []),
+    "bloque_horario",
+    ["consumo_m3"]
+  );
+
+  const categoriasBase = groupBySum(
+    dashboards.flatMap((d) => d?.categorias || []),
+    "categoria",
+    ["consumo_m3", "total_cuentas"]
+  );
+
+  const totalConsumoCategorias = categoriasBase.reduce(
+    (total, c) => total + toNumber(c.consumo_m3),
+    0
+  );
+
+  const totalCuentasCategorias = categoriasBase.reduce(
+    (total, c) => total + toNumber(c.total_cuentas),
+    0
+  );
+
+  const categorias = categoriasBase.map((c) => ({
+    ...c,
+    porcentaje_consumo:
+      totalConsumoCategorias > 0
+        ? round2((toNumber(c.consumo_m3) / totalConsumoCategorias) * 100)
+        : 0,
+    porcentaje_cuentas:
+      totalCuentasCategorias > 0
+        ? round2((toNumber(c.total_cuentas) / totalCuentasCategorias) * 100)
+        : 0,
+    promedio_m3_cuenta:
+      toNumber(c.total_cuentas) > 0
+        ? round2(toNumber(c.consumo_m3) / toNumber(c.total_cuentas))
+        : 0,
+  }));
+
+  const topZonas = groupBySum(
+    dashboards.flatMap((d) => d?.top_zonas || []),
+    "zona",
+    ["consumo_m3", "total_cuentas"]
+  )
+    .sort((a, b) => toNumber(b.consumo_m3) - toNumber(a.consumo_m3))
+    .slice(0, 10);
+
+  const fallasModelo = groupBySum(
+    dashboards.flatMap((d) => d?.fallas_modelo || []),
+    "modelo_medidor",
+    ["activos", "sensores_con_error"]
+  );
+
+  const anomalias = dashboards
+    .flatMap((d) => d?.anomalias || [])
+    .slice(0, 100);
+
+  const sensoresError = groupBySum(
+    dashboards.flatMap((d) => d?.sensores_error || []),
+    "estado_error",
+    ["total_sensores", "lecturas_asociadas", "consumo_m3_asociado"]
+  );
+
+  return {
+    kpis,
+    horas,
+    categorias,
+    top_zonas: topZonas,
+    fallas_modelo: fallasModelo,
+    anomalias,
+    sensores_error: sensoresError,
+  };
+}
+
+function combinarContabilidad(datosPorDistrito, periodoActual) {
+  const dashboards = datosPorDistrito.map((item) => item.data).filter(Boolean);
+
+  const kpis = dashboards.reduce(
+    (acc, data) => {
+      const k = data?.kpis || {};
+
+      acc.monto_facturado_bs += toNumber(k.monto_facturado_bs);
+      acc.monto_recaudado_bs += toNumber(k.monto_recaudado_bs);
+      acc.cartera_vencida_bs += toNumber(k.cartera_vencida_bs);
+      acc.preavisos_emitidos += toNumber(k.preavisos_emitidos);
+      acc.cuentas_morosas += toNumber(k.cuentas_morosas);
+
+      return acc;
+    },
+    {
+      distrito: "TODOS",
+      periodo: periodoActual,
+      monto_facturado_bs: 0,
+      monto_recaudado_bs: 0,
+      recuperacion_pct: 0,
+      cartera_vencida_bs: 0,
+      mora_pct: 0,
+      preavisos_emitidos: 0,
+      cuentas_morosas: 0,
+      mejor_canal_cobranza: "SIN DATOS",
+    }
+  );
+
+  kpis.monto_facturado_bs = round2(kpis.monto_facturado_bs);
+  kpis.monto_recaudado_bs = round2(kpis.monto_recaudado_bs);
+  kpis.cartera_vencida_bs = round2(kpis.cartera_vencida_bs);
+
+  kpis.recuperacion_pct =
+    kpis.monto_facturado_bs > 0
+      ? round2((kpis.monto_recaudado_bs / kpis.monto_facturado_bs) * 100)
+      : 0;
+
+  kpis.mora_pct =
+    kpis.monto_facturado_bs > 0
+      ? round2((kpis.cartera_vencida_bs / kpis.monto_facturado_bs) * 100)
+      : 0;
+
+  const facturacionTarifa = groupBySum(
+    dashboards.flatMap((d) => d?.facturacion_tarifa || []),
+    "codigo_tarifa",
+    [
+      "monto_facturado_bs",
+      "monto_recaudado_bs",
+      "cartera_vencida_bs",
+      "cuentas",
+      "consumo_m3",
+    ]
+  );
+
+  const facturacionCategoriaBase = groupBySum(
+    dashboards.flatMap((d) => d?.facturacion_categoria || []),
+    "categoria",
+    [
+      "cuentas",
+      "consumo_m3",
+      "monto_facturado_bs",
+      "monto_recaudado_bs",
+      "cartera_vencida_bs",
+    ]
+  );
+
+  const facturacionCategoria = facturacionCategoriaBase.map((c) => ({
+    ...c,
+    ticket_promedio_bs:
+      toNumber(c.cuentas) > 0
+        ? round2(toNumber(c.monto_facturado_bs) / toNumber(c.cuentas))
+        : 0,
+  }));
+
+  const facturacionZonaTop10 = groupBySum(
+    dashboards.flatMap((d) => d?.facturacion_zona_top10 || []),
+    "zona",
+    ["monto_facturado_bs", "monto_recaudado_bs", "cartera_vencida_bs"]
+  )
+    .sort(
+      (a, b) => toNumber(b.cartera_vencida_bs) - toNumber(a.cartera_vencida_bs)
+    )
+    .slice(0, 10);
+
+  const efectividadCanalesBase = groupBySum(
+    dashboards.flatMap((d) => d?.efectividad_canales || []),
+    "canal",
+    ["preavisos_emitidos", "monto_cartera_bs", "recuperacion_estimada_bs"]
+  );
+
+  const efectividadCanales = efectividadCanalesBase.map((c) => ({
+    ...c,
+    conversion_pct:
+      toNumber(c.monto_cartera_bs) > 0
+        ? round2(
+            (toNumber(c.recuperacion_estimada_bs) /
+              toNumber(c.monto_cartera_bs)) *
+              100
+          )
+        : 0,
+  }));
+
+  const mejorCanal = [...efectividadCanales].sort(
+    (a, b) =>
+      toNumber(b.recuperacion_estimada_bs) -
+      toNumber(a.recuperacion_estimada_bs)
+  )[0];
+
+  if (mejorCanal?.canal) {
+    kpis.mejor_canal_cobranza = mejorCanal.canal;
+  }
+
+  const grandesDeudores = dashboards
+    .flatMap((d) => d?.grandes_deudores || [])
+    .sort(
+      (a, b) => toNumber(b.cartera_vencida_bs) - toNumber(a.cartera_vencida_bs)
+    )
+    .slice(0, 50);
+
+  const facturacionPorDistrito = datosPorDistrito.map(({ distrito, data }) => {
+    const k = data?.kpis || {};
+
+    return {
+      distrito,
+      monto_facturado_bs: round2(k.monto_facturado_bs),
+      monto_recaudado_bs: round2(k.monto_recaudado_bs),
+      cartera_vencida_bs: round2(k.cartera_vencida_bs),
+    };
+  });
+
+  return {
+    kpis,
+    facturacion_tarifa: facturacionTarifa,
+    facturacion_categoria: facturacionCategoria,
+    facturacion_zona_top10: facturacionZonaTop10,
+    efectividad_canales: efectividadCanales,
+    grandes_deudores: grandesDeudores,
+    obligatorios: {
+      facturacion_por_distrito: facturacionPorDistrito,
+    },
+  };
 }
 
 function App() {
-  const [tab, setTab] = useState("alcaldia");
+  const usuarioInicial = getUsuarioGuardado();
+
+  const [usuario, setUsuario] = useState(usuarioInicial);
+
+  const [tab, setTab] = useState(
+    usuarioInicial ? getDashboardInicialPorRol(usuarioInicial.rol) : "alcaldia"
+  );
+
+  const [loading, setLoading] = useState(true);
+  const [alcaldiaLoading, setAlcaldiaLoading] = useState(false);
+  const [mapaLoading, setMapaLoading] = useState(false);
+  const [errorInicial, setErrorInicial] = useState("");
+  const [aviso, setAviso] = useState("");
+
+  const [gerenciaLoading, setGerenciaLoading] = useState(false);
+  const [contabilidadLoading, setContabilidadLoading] = useState(false);
 
   const [distritos, setDistritos] = useState([]);
   const [alcaldia, setAlcaldia] = useState(null);
 
-  const [distrito, setDistrito] = useState("1");
+  const [distrito, setDistrito] = useState("");
   const [periodo, setPeriodo] = useState("2026-04");
 
-  const [resumenDistrito, setResumenDistrito] = useState(null);
+  // Importante: por defecto Distrito 1, no TODOS.
+  // TODOS hace 15 llamadas y tarda mucho.
+  const [distritoDashboardFiltro, setDistritoDashboardFiltro] = useState("1");
+
   const [cuentas, setCuentas] = useState([]);
+  const [cuentasMapa, setCuentasMapa] = useState([]);
+
   const [cuentaSeleccionada, setCuentaSeleccionada] = useState(null);
   const [consumoCuenta, setConsumoCuenta] = useState([]);
 
@@ -94,697 +383,954 @@ function App() {
   const [contabilidad, setContabilidad] = useState(null);
 
   const [busqueda, setBusqueda] = useState("");
-  const [zona, setZona] = useState("TODAS");
+
+  const [distritoFiltro, setDistritoFiltro] = useState("TODOS");
+  const [zonaFiltro, setZonaFiltro] = useState("TODAS");
+  const [categoriaFiltro, setCategoriaFiltro] = useState("TODAS");
+  const [subcategoriaFiltro, setSubcategoriaFiltro] = useState("TODAS");
+  const [modeloMedidorFiltro, setModeloMedidorFiltro] = useState("TODOS");
+  const [estadoMedidorFiltro, setEstadoMedidorFiltro] = useState("TODOS");
+  const [estadoContratoFiltro, setEstadoContratoFiltro] = useState("TODOS");
+  const [tipoServicioFiltro, setTipoServicioFiltro] = useState("TODOS");
+
+  const [geojson, setGeojson] = useState(null);
 
   const [whatsapp, setWhatsapp] = useState("");
   const [sms, setSms] = useState("");
   const [email, setEmail] = useState("");
   const [resultadoEnvio, setResultadoEnvio] = useState(null);
 
-  const [geojson, setGeojson] = useState(null);
+  const isTotemRoute = window.location.pathname === "/totem";
+
+  const tabsPermitidos = useMemo(() => {
+    return usuario ? getTabsPermitidosPorRol(usuario.rol) : [];
+  }, [usuario?.rol]);
 
   useEffect(() => {
-    cargarInicial();
-  }, []);
+    if (isTotemRoute) return;
+    if (!usuario) return;
+
+    cargarBase();
+  }, [isTotemRoute, usuario?.id]);
 
   useEffect(() => {
-    if (distrito) {
-      cargarDistrito();
+    if (isTotemRoute) return;
+    if (!usuario) return;
+
+    if (tab === "alcaldia" && tabsPermitidos.includes("alcaldia") && !alcaldia) {
+      cargarAlcaldia();
     }
-  }, [distrito]);
+  }, [isTotemRoute, usuario?.id, tab, alcaldia, tabsPermitidos]);
 
   useEffect(() => {
-    if (distrito && periodo) {
-      cargarDashboardsDistrito();
-    }
-  }, [distrito, periodo]);
+    if (isTotemRoute) return;
+    if (!usuario) return;
+    if (tab !== "gerencia") return;
+    if (!tabsPermitidos.includes("gerencia")) return;
+    if (!periodo) return;
+    if (gerenciaLoading) return;
 
-  async function cargarInicial() {
-    const [distritosRes, alcaldiaRes] = await Promise.all([
-      axios.get(`${API}/api/distritos`),
-      axios.get(`${API}/api/dashboard/alcaldia`),
-    ]);
-
-    setDistritos(distritosRes.data);
-    setAlcaldia(alcaldiaRes.data);
-
-    const primero = distritosRes.data?.[0]?.distrito || "1";
-    setDistrito(primero);
-
-    try {
-  const geo = await axios.get("/cochabamba_distritos.geojson");
+    const distritoCargado = String(gerencia?.kpis?.distrito || "");
+    const periodoCargado = String(gerencia?.kpis?.periodo || "");
 
     if (
-      geo.data &&
-      geo.data.type &&
-      ["FeatureCollection", "Feature", "Polygon", "MultiPolygon"].includes(geo.data.type)
+      distritoCargado === String(distritoDashboardFiltro) &&
+      periodoCargado === String(periodo)
     ) {
-      setGeojson(geo.data);
-    } else {
-      console.warn("GeoJSON inválido. Se usará solo OpenStreetMap.");
-      setGeojson(null);
+      return;
     }
-  } catch {
-    setGeojson(null);
-  }
+
+    if (distritoDashboardFiltro === "TODOS") {
+      if (distritos.length > 0) {
+        cargarGerenciaTodos(periodo);
+      }
+    } else {
+      cargarGerencia(distritoDashboardFiltro, periodo);
+    }
+  }, [
+    isTotemRoute,
+    usuario?.id,
+    tab,
+    tabsPermitidos,
+    distritoDashboardFiltro,
+    periodo,
+    distritos.length,
+    gerencia?.kpis?.distrito,
+    gerencia?.kpis?.periodo,
+    gerenciaLoading,
+  ]);
+
+  useEffect(() => {
+    if (isTotemRoute) return;
+    if (!usuario) return;
+    if (tab !== "contabilidad") return;
+    if (!tabsPermitidos.includes("contabilidad")) return;
+    if (!periodo) return;
+    if (contabilidadLoading) return;
+
+    const distritoCargado = String(contabilidad?.kpis?.distrito || "");
+    const periodoCargado = String(contabilidad?.kpis?.periodo || "");
+
+    if (
+      distritoCargado === String(distritoDashboardFiltro) &&
+      periodoCargado === String(periodo)
+    ) {
+      return;
+    }
+
+    if (distritoDashboardFiltro === "TODOS") {
+      if (distritos.length > 0) {
+        cargarContabilidadTodos(periodo);
+      }
+    } else {
+      cargarContabilidad(distritoDashboardFiltro, periodo);
+    }
+  }, [
+    isTotemRoute,
+    usuario?.id,
+    tab,
+    tabsPermitidos,
+    distritoDashboardFiltro,
+    periodo,
+    distritos.length,
+    contabilidad?.kpis?.distrito,
+    contabilidad?.kpis?.periodo,
+    contabilidadLoading,
+  ]);
+
+  useEffect(() => {
+    if (isTotemRoute) return;
+    if (!usuario) return;
+    if (tab !== "mapa") return;
+    if (!tabsPermitidos.includes("mapa")) return;
+
+    if (distritos.length > 0 && cuentasMapa.length === 0 && !mapaLoading) {
+      cargarCuentasMapa(distritos);
+    }
+  }, [
+    isTotemRoute,
+    usuario?.id,
+    tab,
+    tabsPermitidos,
+    distritos.length,
+    cuentasMapa.length,
+    mapaLoading,
+  ]);
+
+  function mostrarErrorReal(nombre, error) {
+    console.error(`ERROR EN ${nombre}:`, {
+      status: error?.response?.status,
+      data: error?.response?.data,
+      message: error?.message,
+      url: error?.config?.url,
+    });
   }
 
-  async function cargarDistrito() {
-    const resumenRes = await axios.get(`${API}/api/distritos/${distrito}/resumen`);
-    const cuentasRes = await axios.get(`${API}/api/distritos/${distrito}/cuentas?limit=1500`);
+  function iniciarSesion(usuarioLocal) {
+    setUsuario(usuarioLocal);
+    setTab(getDashboardInicialPorRol(usuarioLocal.rol));
+    setLoading(true);
+    setErrorInicial("");
+    setAviso("");
+  }
 
-    setResumenDistrito(resumenRes.data);
-    setCuentas(cuentasRes.data);
+  function cerrarSesion() {
+    localStorage.removeItem("semapa_user");
+
+    setUsuario(null);
+    setTab("alcaldia");
+    setAlcaldia(null);
+    setGerencia(null);
+    setContabilidad(null);
+    setCuentasMapa([]);
     setCuentaSeleccionada(null);
     setConsumoCuenta([]);
-    setResultadoEnvio(null);
+    setAviso("");
+    setErrorInicial("");
+    setLoading(false);
+  }
 
-    const ultimoPeriodo = resumenRes.data?.ultimo?.periodo;
-    if (ultimoPeriodo) {
-      setPeriodo(ultimoPeriodo);
+  function obtenerDistritosIds() {
+    const ids = distritos
+      .map((d) => String(d.distrito))
+      .filter(Boolean)
+      .sort((a, b) => Number(a) - Number(b));
+
+    return ids.length ? ids : ["1"];
+  }
+
+  async function cargarBase() {
+    try {
+      setLoading(true);
+      setErrorInicial("");
+      setAviso("");
+
+      const distritosData = await getDistritos();
+      setDistritos(distritosData || []);
+
+      const primerDistrito = distritosData?.[0]?.distrito
+        ? String(distritosData[0].distrito)
+        : "1";
+
+      setDistrito(primerDistrito);
+
+      try {
+        const geoResponse = await fetch("/cochabamba_distritos.geojson");
+
+        if (geoResponse.ok) {
+          const geo = await geoResponse.json();
+
+          if (
+            geo &&
+            geo.type &&
+            ["FeatureCollection", "Feature", "Polygon", "MultiPolygon"].includes(
+              geo.type
+            )
+          ) {
+            setGeojson(geo);
+          } else {
+            setGeojson(null);
+          }
+        }
+      } catch {
+        setGeojson(null);
+      }
+    } catch (error) {
+      mostrarErrorReal("CARGA BASE", error);
+      setErrorInicial(
+        "No se pudo cargar la información inicial. Revisa que el backend esté prendido y que /api/distritos responda."
+      );
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function cargarDashboardsDistrito() {
-    const [gerenciaRes, contabilidadRes] = await Promise.all([
-      axios.get(`${API}/api/dashboard/gerencia/${distrito}?periodo=${periodo}`),
-      axios.get(`${API}/api/dashboard/contabilidad/${distrito}?periodo=${periodo}`),
-    ]);
+  async function cargarAlcaldia() {
+    try {
+      setAlcaldiaLoading(true);
+      setAviso("");
 
-    setGerencia(gerenciaRes.data);
-    setContabilidad(contabilidadRes.data);
+      const alcaldiaData = await getDashboardAlcaldia();
+      setAlcaldia(alcaldiaData);
+    } catch (error) {
+      mostrarErrorReal("DASHBOARD ALCALDIA", error);
+      setAlcaldia(null);
+      setAviso("No se pudo cargar Dashboard Alcaldía.");
+    } finally {
+      setAlcaldiaLoading(false);
+    }
+  }
+
+  async function cargarCuentasMapa(distritosData) {
+    try {
+      setMapaLoading(true);
+      setAviso("");
+
+      const resultados = [];
+
+      for (const d of distritosData || []) {
+        try {
+          const data = await getCuentasDistrito(String(d.distrito), 5000);
+          resultados.push(...(data || []));
+        } catch (error) {
+          mostrarErrorReal(`CUENTAS MAPA DISTRITO ${d.distrito}`, error);
+        }
+      }
+
+      const sinDuplicados = Array.from(
+        new Map(resultados.map((c) => [c.cuenta_id, c])).values()
+      );
+
+      setCuentasMapa(sinDuplicados);
+    } catch (error) {
+      mostrarErrorReal("CARGA CUENTAS MAPA", error);
+      setCuentasMapa([]);
+    } finally {
+      setMapaLoading(false);
+    }
+  }
+
+  async function cargarGerencia(distritoId, periodoActual) {
+    try {
+      setGerenciaLoading(true);
+      setAviso("");
+
+      const gerenciaData = await getDashboardGerencia(distritoId, periodoActual);
+      setGerencia(gerenciaData);
+    } catch (error) {
+      mostrarErrorReal(`DASHBOARD GERENCIA DISTRITO ${distritoId}`, error);
+      setGerencia(null);
+      setAviso(
+        `Gerencia no cargó para distrito ${distritoId}. Revisa F12 → Console.`
+      );
+    } finally {
+      setGerenciaLoading(false);
+    }
+  }
+
+  async function cargarGerenciaTodos(periodoActual) {
+    try {
+      setGerenciaLoading(true);
+      setAviso("");
+
+      const ids = obtenerDistritosIds();
+      const validos = [];
+
+      for (const id of ids) {
+        try {
+          const data = await getDashboardGerencia(id, periodoActual);
+          validos.push({ distrito: id, data });
+        } catch (error) {
+          mostrarErrorReal(`DASHBOARD GERENCIA DISTRITO ${id}`, error);
+        }
+      }
+
+      if (!validos.length) {
+        throw new Error("No se pudo cargar ningún distrito para Gerencia.");
+      }
+
+      setGerencia(combinarGerencia(validos, periodoActual));
+
+      if (validos.length < ids.length) {
+        setAviso(
+          `Gerencia consolidó ${validos.length} de ${ids.length} distritos. Algunos tardaron demasiado.`
+        );
+      }
+    } catch (error) {
+      mostrarErrorReal("DASHBOARD GERENCIA TODOS", error);
+      setGerencia(null);
+      setAviso(
+        "Gerencia no cargó para todos los distritos. Revisa F12 → Console."
+      );
+    } finally {
+      setGerenciaLoading(false);
+    }
+  }
+
+  async function cargarContabilidad(distritoId, periodoActual) {
+    try {
+      setContabilidadLoading(true);
+      setAviso("");
+
+      const contabilidadData = await getDashboardContabilidad(
+        distritoId,
+        periodoActual
+      );
+
+      setContabilidad(contabilidadData);
+    } catch (error) {
+      mostrarErrorReal(`DASHBOARD CONTABILIDAD DISTRITO ${distritoId}`, error);
+      setContabilidad(null);
+      setAviso(`Contabilidad no cargó para distrito ${distritoId}.`);
+    } finally {
+      setContabilidadLoading(false);
+    }
+  }
+
+  async function cargarContabilidadTodos(periodoActual) {
+    try {
+      setContabilidadLoading(true);
+      setAviso("");
+
+      const ids = obtenerDistritosIds();
+      const validos = [];
+
+      for (const id of ids) {
+        try {
+          const data = await getDashboardContabilidad(id, periodoActual);
+          validos.push({ distrito: id, data });
+        } catch (error) {
+          mostrarErrorReal(`DASHBOARD CONTABILIDAD DISTRITO ${id}`, error);
+        }
+      }
+
+      if (!validos.length) {
+        throw new Error("No se pudo cargar ningún distrito para Contabilidad.");
+      }
+
+      setContabilidad(combinarContabilidad(validos, periodoActual));
+
+      if (validos.length < ids.length) {
+        setAviso(
+          `Contabilidad consolidó ${validos.length} de ${ids.length} distritos. Algunos tardaron demasiado.`
+        );
+      }
+    } catch (error) {
+      mostrarErrorReal("DASHBOARD CONTABILIDAD TODOS", error);
+      setContabilidad(null);
+      setAviso(
+        "Contabilidad no cargó para todos los distritos. Revisa F12 → Console."
+      );
+    } finally {
+      setContabilidadLoading(false);
+    }
   }
 
   async function seleccionarCuenta(cuenta) {
-    const [detalleRes, consumoRes] = await Promise.all([
-      axios.get(`${API}/api/cuentas/${cuenta.cuenta_id}`),
-      axios.get(`${API}/api/cuentas/${cuenta.cuenta_id}/consumo`),
-    ]);
+    try {
+      setAviso("");
 
-    setCuentaSeleccionada(detalleRes.data);
-    setConsumoCuenta(consumoRes.data);
-    setResultadoEnvio(null);
+      const [detalleData, consumoData] = await Promise.all([
+        getCuentaDetalle(cuenta.cuenta_id),
+        getConsumoCuenta(cuenta.cuenta_id),
+      ]);
+
+      setCuentaSeleccionada(detalleData);
+      setConsumoCuenta(consumoData || []);
+      setResultadoEnvio(null);
+    } catch (error) {
+      mostrarErrorReal("DETALLE CUENTA", error);
+      setAviso("No se pudo cargar el detalle de la cuenta seleccionada.");
+    }
   }
 
   async function generarPdf() {
     if (!cuentaSeleccionada || !periodo) return;
 
-    const res = await axios.post(`${API}/api/preaviso/generar-pdf`, {
-      cuenta_id: cuentaSeleccionada.cuenta_id,
-      periodo,
-    });
+    try {
+      const resultado = await generarPdfPreaviso({
+        cuenta_id: cuentaSeleccionada.cuenta_id,
+        periodo,
+      });
 
-    setResultadoEnvio(res.data);
+      setResultadoEnvio(resultado);
+    } catch (error) {
+      mostrarErrorReal("GENERAR PDF", error);
+      setAviso("No se pudo generar el PDF del preaviso.");
+    }
   }
 
-  async function enviarPreaviso() {
+  async function enviarPreavisoCuenta() {
     if (!cuentaSeleccionada || !periodo) return;
 
-    const res = await axios.post(`${API}/api/preaviso/enviar`, {
-      cuenta_id: cuentaSeleccionada.cuenta_id,
-      periodo,
-      whatsapp,
-      sms,
-      email,
+    try {
+      const resultado = await enviarPreaviso({
+        cuenta_id: cuentaSeleccionada.cuenta_id,
+        periodo,
+        whatsapp,
+        sms,
+        email,
+      });
+
+      setResultadoEnvio(resultado);
+    } catch (error) {
+      mostrarErrorReal("ENVIAR PREAVISO", error);
+      setAviso("No se pudo enviar el preaviso por RabbitMQ.");
+    }
+  }
+
+  function normalizarValorFiltro(value) {
+    if (value === null || value === undefined) return "";
+    return String(value).trim();
+  }
+
+  function contarOpcionesPorCampo(data, campo) {
+    const conteo = new Map();
+
+    data.forEach((item) => {
+      const valor = normalizarValorFiltro(item?.[campo]);
+
+      if (!valor) return;
+
+      conteo.set(valor, (conteo.get(valor) || 0) + 1);
     });
 
-    setResultadoEnvio(res.data);
+    return conteo;
+  }
+
+  function ordenarOpciones(campo, opciones) {
+    if (campo === "distrito") {
+      return opciones.sort((a, b) => Number(a) - Number(b));
+    }
+
+    return opciones.sort((a, b) => a.localeCompare(b));
+  }
+
+  function crearOpcionesDesdeData(data, campo, etiquetaTodos = "TODOS") {
+    const conteo = contarOpcionesPorCampo(data, campo);
+
+    const opciones = Array.from(conteo.entries())
+      .filter(([, cantidad]) => cantidad >= MIN_DATOS_PARA_MOSTRAR_FILTRO)
+      .map(([valor]) => valor);
+
+    return [etiquetaTodos, ...ordenarOpciones(campo, opciones)];
+  }
+
+  function aplicarFiltrosParaOpciones(data, ignorarCampo = "") {
+    return data.filter((c) => {
+      if (
+        ignorarCampo !== "distrito" &&
+        distritoFiltro !== "TODOS" &&
+        String(c.distrito) !== String(distritoFiltro)
+      ) {
+        return false;
+      }
+
+      if (
+        ignorarCampo !== "zona" &&
+        zonaFiltro !== "TODAS" &&
+        String(c.zona) !== String(zonaFiltro)
+      ) {
+        return false;
+      }
+
+      if (
+        ignorarCampo !== "categoria" &&
+        categoriaFiltro !== "TODAS" &&
+        String(c.categoria) !== String(categoriaFiltro)
+      ) {
+        return false;
+      }
+
+      if (
+        ignorarCampo !== "subcategoria" &&
+        subcategoriaFiltro !== "TODAS" &&
+        String(c.subcategoria) !== String(subcategoriaFiltro)
+      ) {
+        return false;
+      }
+
+      if (
+        ignorarCampo !== "modelo_medidor" &&
+        modeloMedidorFiltro !== "TODOS" &&
+        String(c.modelo_medidor) !== String(modeloMedidorFiltro)
+      ) {
+        return false;
+      }
+
+      if (
+        ignorarCampo !== "estado_medidor" &&
+        estadoMedidorFiltro !== "TODOS" &&
+        String(c.estado_medidor) !== String(estadoMedidorFiltro)
+      ) {
+        return false;
+      }
+
+      if (
+        ignorarCampo !== "estado_contrato" &&
+        estadoContratoFiltro !== "TODOS" &&
+        String(c.estado_contrato) !== String(estadoContratoFiltro)
+      ) {
+        return false;
+      }
+
+      if (
+        ignorarCampo !== "tipo_servicio" &&
+        tipoServicioFiltro !== "TODOS" &&
+        String(c.tipo_servicio) !== String(tipoServicioFiltro)
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  function crearOpcionesDependientes(campo, etiquetaTodos = "TODOS") {
+    const base = cuentasMapa.length ? cuentasMapa : cuentas;
+    const dataFiltrada = aplicarFiltrosParaOpciones(base, campo);
+
+    return crearOpcionesDesdeData(dataFiltrada, campo, etiquetaTodos);
   }
 
   const distritoActual = useMemo(() => {
     return distritos.find((d) => String(d.distrito) === String(distrito));
   }, [distritos, distrito]);
 
-  const zonas = useMemo(() => {
-    const values = Array.from(new Set(cuentas.map((c) => c.zona).filter(Boolean))).sort();
-    return ["TODAS", ...values];
-  }, [cuentas]);
+  const distritoMapaActual = useMemo(() => {
+    if (distritoFiltro !== "TODOS") {
+      return distritos.find((d) => String(d.distrito) === String(distritoFiltro));
+    }
+
+    return distritoActual;
+  }, [distritos, distritoFiltro, distritoActual]);
+
+  const filtrosOpciones = useMemo(() => {
+    return {
+      distritos: crearOpcionesDependientes("distrito", "TODOS"),
+      zonas: crearOpcionesDependientes("zona", "TODAS"),
+      categorias: crearOpcionesDependientes("categoria", "TODAS"),
+      subcategorias: crearOpcionesDependientes("subcategoria", "TODAS"),
+      modelosMedidor: crearOpcionesDependientes("modelo_medidor", "TODOS"),
+      estadosMedidor: crearOpcionesDependientes("estado_medidor", "TODOS"),
+      estadosContrato: crearOpcionesDependientes("estado_contrato", "TODOS"),
+      tiposServicio: crearOpcionesDependientes("tipo_servicio", "TODOS"),
+    };
+  }, [
+    cuentasMapa,
+    cuentas,
+    distritoFiltro,
+    zonaFiltro,
+    categoriaFiltro,
+    subcategoriaFiltro,
+    modeloMedidorFiltro,
+    estadoMedidorFiltro,
+    estadoContratoFiltro,
+    tipoServicioFiltro,
+  ]);
+
+  useEffect(() => {
+    if (isTotemRoute) return;
+    if (!usuario) return;
+    if (tab !== "mapa") return;
+
+    if (
+      distritoFiltro !== "TODOS" &&
+      !filtrosOpciones.distritos.includes(distritoFiltro)
+    ) {
+      setDistritoFiltro("TODOS");
+    }
+
+    if (
+      zonaFiltro !== "TODAS" &&
+      !filtrosOpciones.zonas.includes(zonaFiltro)
+    ) {
+      setZonaFiltro("TODAS");
+    }
+
+    if (
+      categoriaFiltro !== "TODAS" &&
+      !filtrosOpciones.categorias.includes(categoriaFiltro)
+    ) {
+      setCategoriaFiltro("TODAS");
+    }
+
+    if (
+      subcategoriaFiltro !== "TODAS" &&
+      !filtrosOpciones.subcategorias.includes(subcategoriaFiltro)
+    ) {
+      setSubcategoriaFiltro("TODAS");
+    }
+
+    if (
+      modeloMedidorFiltro !== "TODOS" &&
+      !filtrosOpciones.modelosMedidor.includes(modeloMedidorFiltro)
+    ) {
+      setModeloMedidorFiltro("TODOS");
+    }
+
+    if (
+      estadoMedidorFiltro !== "TODOS" &&
+      !filtrosOpciones.estadosMedidor.includes(estadoMedidorFiltro)
+    ) {
+      setEstadoMedidorFiltro("TODOS");
+    }
+
+    if (
+      estadoContratoFiltro !== "TODOS" &&
+      !filtrosOpciones.estadosContrato.includes(estadoContratoFiltro)
+    ) {
+      setEstadoContratoFiltro("TODOS");
+    }
+
+    if (
+      tipoServicioFiltro !== "TODOS" &&
+      !filtrosOpciones.tiposServicio.includes(tipoServicioFiltro)
+    ) {
+      setTipoServicioFiltro("TODOS");
+    }
+  }, [
+    isTotemRoute,
+    usuario,
+    tab,
+    filtrosOpciones,
+    distritoFiltro,
+    zonaFiltro,
+    categoriaFiltro,
+    subcategoriaFiltro,
+    modeloMedidorFiltro,
+    estadoMedidorFiltro,
+    estadoContratoFiltro,
+    tipoServicioFiltro,
+  ]);
 
   const cuentasFiltradas = useMemo(() => {
-    let data = [...cuentas];
+    let data = cuentasMapa.length ? [...cuentasMapa] : [...cuentas];
 
-    if (zona !== "TODAS") {
-      data = data.filter((c) => c.zona === zona);
+    if (distritoFiltro !== "TODOS") {
+      data = data.filter((c) => String(c.distrito) === String(distritoFiltro));
+    }
+
+    if (zonaFiltro !== "TODAS") {
+      data = data.filter((c) => String(c.zona) === String(zonaFiltro));
+    }
+
+    if (categoriaFiltro !== "TODAS") {
+      data = data.filter((c) => String(c.categoria) === String(categoriaFiltro));
+    }
+
+    if (subcategoriaFiltro !== "TODAS") {
+      data = data.filter(
+        (c) => String(c.subcategoria) === String(subcategoriaFiltro)
+      );
+    }
+
+    if (modeloMedidorFiltro !== "TODOS") {
+      data = data.filter(
+        (c) => String(c.modelo_medidor) === String(modeloMedidorFiltro)
+      );
+    }
+
+    if (estadoMedidorFiltro !== "TODOS") {
+      data = data.filter(
+        (c) => String(c.estado_medidor) === String(estadoMedidorFiltro)
+      );
+    }
+
+    if (estadoContratoFiltro !== "TODOS") {
+      data = data.filter(
+        (c) => String(c.estado_contrato) === String(estadoContratoFiltro)
+      );
+    }
+
+    if (tipoServicioFiltro !== "TODOS") {
+      data = data.filter(
+        (c) => String(c.tipo_servicio) === String(tipoServicioFiltro)
+      );
     }
 
     if (busqueda.trim()) {
-      const b = busqueda.trim().toUpperCase();
+      const texto = busqueda.trim().toUpperCase();
+
       data = data.filter((c) => {
         return (
-          String(c.cuenta_id || "").toUpperCase().includes(b) ||
-          String(c.nombre_cliente || "").toUpperCase().includes(b) ||
-          String(c.medidor_mac || "").toUpperCase().includes(b) ||
-          String(c.direccion || "").toUpperCase().includes(b)
+          String(c.cuenta_id || "").toUpperCase().includes(texto) ||
+          String(c.nombre_cliente || "").toUpperCase().includes(texto) ||
+          String(c.medidor_mac || "").toUpperCase().includes(texto) ||
+          String(c.direccion || "").toUpperCase().includes(texto) ||
+          String(c.numero_catastro || "").toUpperCase().includes(texto)
         );
       });
     }
 
     return data;
-  }, [cuentas, zona, busqueda]);
+  }, [
+    cuentasMapa,
+    cuentas,
+    distritoFiltro,
+    zonaFiltro,
+    categoriaFiltro,
+    subcategoriaFiltro,
+    modeloMedidorFiltro,
+    estadoMedidorFiltro,
+    estadoContratoFiltro,
+    tipoServicioFiltro,
+    busqueda,
+  ]);
 
   const consumoPeriodoCuenta = useMemo(() => {
     if (!consumoCuenta.length) return null;
+
     return consumoCuenta.find((c) => c.periodo === periodo) || consumoCuenta[0];
   }, [consumoCuenta, periodo]);
 
+  function limpiarFiltrosMapa() {
+    setDistritoFiltro("TODOS");
+    setZonaFiltro("TODAS");
+    setCategoriaFiltro("TODAS");
+    setSubcategoriaFiltro("TODAS");
+    setModeloMedidorFiltro("TODOS");
+    setEstadoMedidorFiltro("TODOS");
+    setEstadoContratoFiltro("TODOS");
+    setTipoServicioFiltro("TODOS");
+    setBusqueda("");
+  }
+
+  if (isTotemRoute) {
+    return <TotemAutoservicio periodoInicial={periodo || "2026-04"} />;
+  }
+
+  if (!usuario) {
+    return <LoginLocal onLogin={iniciarSesion} />;
+  }
+
+  if (loading) {
+    return (
+      <LoadingState
+        message="Cargando plataforma SEMAPA..."
+        detail="Conectando con FastAPI y consultando distritos en Cassandra"
+      />
+    );
+  }
+
+  if (errorInicial) {
+    return <ErrorState message={errorInicial} />;
+  }
+
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="logo">S</div>
-          <div>
-            <h2>SEMAPA</h2>
-            <p>Big Data Cassandra</p>
-          </div>
-        </div>
+    <div className="lay-app">
+      <Sidebar
+        activeTab={tab}
+        onChangeTab={setTab}
+        visibleTabs={tabsPermitidos}
+        usuario={usuario}
+        onLogout={cerrarSesion}
+      />
 
-        <label>Distrito</label>
-        <select value={distrito} onChange={(e) => setDistrito(e.target.value)}>
-          {distritos.map((d) => (
-            <option key={d.distrito} value={d.distrito}>
-              Distrito {d.distrito}
-            </option>
-          ))}
-        </select>
-
-        <label>Periodo</label>
-        <select value={periodo} onChange={(e) => setPeriodo(e.target.value)}>
-          {resumenDistrito?.periodos?.map((p) => (
-            <option key={p.periodo} value={p.periodo}>
-              {p.periodo}
-            </option>
-          ))}
-        </select>
-
-        <div className="side-note">
-          Mapa interactivo con cuentas, medidores, preavisos PDF y mensajería asincrónica.
-        </div>
-
-        <nav>
-          <button className={tab === "alcaldia" ? "active" : ""} onClick={() => setTab("alcaldia")}>
-            Dashboard Alcaldía
-          </button>
-          <button className={tab === "gerencia" ? "active" : ""} onClick={() => setTab("gerencia")}>
-            Dashboard Gerencia
-          </button>
-          <button className={tab === "contabilidad" ? "active" : ""} onClick={() => setTab("contabilidad")}>
-            Dashboard Contabilidad
-          </button>
-          <button className={tab === "mapa" ? "active" : ""} onClick={() => setTab("mapa")}>
-            Mapa y preavisos
-          </button>
-        </nav>
-      </aside>
-
-      <main className="content">
-        <header className="topbar">
+      <main className="lay-content">
+        <header className="lay-topbar">
           <div>
             <h1>SEMAPA Cochabamba</h1>
-            <p>Plataforma distribuida para gestión inteligente del consumo de agua</p>
+            <p>
+              Plataforma distribuida para gestión inteligente del consumo de agua
+            </p>
           </div>
 
-          <div className="status-pill">Cassandra + RabbitMQ + FastAPI</div>
+          <div className="lay-status-pill">
+            {usuario.nombre} · Rol: {usuario.rol}
+          </div>
         </header>
 
-        {tab === "alcaldia" && (
-          <section>
-            <h2>Dashboard 1 - Alcaldía Municipal / Smart City</h2>
+        {aviso && <div className="lay-state-box lay-state-error">{aviso}</div>}
 
-            <div className="grid-5">
-              <KpiCard title="Consumo ciudad" value={`${formatNumber(alcaldia?.kpis?.consumo_ciudad_m3)} m³`} />
-              <KpiCard title="Cuentas conectadas" value={formatNumber(alcaldia?.kpis?.cuentas_conectadas)} />
-              <KpiCard title="Cobertura IoT" value={`${formatNumber(alcaldia?.kpis?.cobertura_iot)}%`} />
-              <KpiCard title="Sensores con fallas" value={`${formatNumber(alcaldia?.kpis?.sensores_falla_pct)}%`} />
-              <KpiCard title="Medidores activos" value={formatNumber(alcaldia?.kpis?.medidores_activos)} />
+        {(tab === "gerencia" || tab === "contabilidad") && (
+          <div className="lay-panel lay-dashboard-filter-panel">
+            <label>
+              <span>Filtro de dashboard</span>
+              <select
+                value={distritoDashboardFiltro}
+                onChange={(e) => setDistritoDashboardFiltro(e.target.value)}
+              >
+                <option value="TODOS">Todos los distritos</option>
+
+                {distritos.map((d) => (
+                  <option key={d.distrito} value={String(d.distrito)}>
+                    Distrito {d.distrito}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Periodo</span>
+              <select
+                value={periodo}
+                onChange={(e) => setPeriodo(e.target.value)}
+              >
+                <option value="2026-04">2026-04</option>
+                <option value="2026-03">2026-03</option>
+                <option value="2026-02">2026-02</option>
+              </select>
+            </label>
+
+            <div className="lay-dashboard-filter-note">
+              {distritoDashboardFiltro === "TODOS"
+                ? "Mostrando información consolidada de todos los distritos."
+                : `Mostrando información del distrito ${distritoDashboardFiltro}.`}
             </div>
-
-            <div className="dashboard-grid">
-              <div className="panel large">
-                <h3>Mapa GIS municipal</h3>
-                <MapaGeneral
-                  distritos={alcaldia?.distritos || []}
-                  distritoActual={distritoActual}
-                  geojson={geojson}
-                  onDistritoClick={(d) => setDistrito(d)}
-                />
-              </div>
-
-              <div className="panel">
-                <h3>Equidad territorial</h3>
-                <ResponsiveContainer width="100%" height={330}>
-                  <BarChart data={alcaldia?.distritos || []}>
-                    <XAxis dataKey="distrito" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="consumo_m3" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="panel">
-              <h3>Consumo vs temperatura y sequía</h3>
-              <ResponsiveContainer width="100%" height={330}>
-                <BarChart data={alcaldia?.distritos || []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="distrito" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="temperatura_c" name="Temperatura °C" />
-                  <Bar dataKey="indice_sequia" name="Índice sequía" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="panel">
-              <h3>Alertas ODS por distrito</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Distrito</th>
-                    <th>Consumo m³</th>
-                    <th>Cuentas</th>
-                    <th>Cobertura IoT</th>
-                    <th>Sensores falla</th>
-                    <th>Alerta</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(alcaldia?.distritos || []).map((d) => (
-                    <tr key={d.distrito}>
-                      <td>D{d.distrito}</td>
-                      <td>{formatNumber(d.consumo_m3)}</td>
-                      <td>{formatNumber(d.total_cuentas)}</td>
-                      <td>{formatNumber(d.cobertura_iot)}%</td>
-                      <td>{formatNumber(d.sensores_falla_pct)}%</td>
-                      <td>
-                        <span className={d.alerta === "CRÍTICO" ? "badge danger" : "badge ok"}>
-                          {d.alerta}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          </div>
         )}
 
-        {tab === "gerencia" && (
-          <section>
-            <h2>Dashboard 2 - Gerencia / Directorio SEMAPA</h2>
-
-            <div className="grid-5">
-              <KpiCard title="Consumo acumulado" value={`${formatNumber(resumenDistrito?.ultimo?.consumo_m3)} m³`} />
-              <KpiCard title="Medidores activos" value={formatNumber(resumenDistrito?.ultimo?.medidores_activos)} />
-              <KpiCard title="Medidores inactivos" value={formatNumber(resumenDistrito?.ultimo?.medidores_fuera_servicio)} />
-              <KpiCard title="Total cuentas" value={formatNumber(resumenDistrito?.ultimo?.total_cuentas)} />
-              <KpiCard title="Disponibilidad" value={`${formatNumber((resumenDistrito?.ultimo?.medidores_activos || 0) / Math.max(resumenDistrito?.ultimo?.total_medidores || 1, 1) * 100)}%`} />
+        {tab === "alcaldia" &&
+          tabsPermitidos.includes("alcaldia") &&
+          (alcaldiaLoading ? (
+            <div className="lay-inline-loader">
+              <LoadingState
+                message="Cargando Dashboard Alcaldía..."
+                detail="Consultando indicadores Smart City"
+              />
             </div>
-
-            <div className="dashboard-grid">
-              <div className="panel">
-                <h3>Consumo por bloques horarios</h3>
-                <ResponsiveContainer width="100%" height={320}>
-                  <BarChart data={gerencia?.horas || []}>
-                    <XAxis dataKey="bloque_horario" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="consumo_m3" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="panel">
-                <h3>Distribución por categoría tarifaria</h3>
-                <ResponsiveContainer width="100%" height={320}>
-                  <PieChart>
-                    <Pie
-                      data={gerencia?.categorias || []}
-                      dataKey="consumo_m3"
-                      nameKey="categoria"
-                      outerRadius={110}
-                      label
-                    >
-                      {(gerencia?.categorias || []).map((_, index) => (
-                        <Cell key={index} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
+          ) : alcaldia ? (
+            <DashboardAlcaldia
+              alcaldia={alcaldia}
+              distritoActual={distritoActual}
+              onDistritoClick={setDistrito}
+            />
+          ) : (
+            <div className="lay-state-box lay-state-error">
+              No se cargaron datos de Alcaldía.
             </div>
+          ))}
 
-            <div className="dashboard-grid">
-              <div className="panel">
-                <h3>Top 10 zonas de mayor demanda</h3>
-                <ResponsiveContainer width="100%" height={320}>
-                  <BarChart data={gerencia?.top_zonas || []}>
-                    <XAxis dataKey="zona" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="consumo_m3" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="panel">
-                <h3>Fallas por modelo</h3>
-                <ResponsiveContainer width="100%" height={320}>
-                  <BarChart data={gerencia?.fallas_modelo || []}>
-                    <XAxis dataKey="modelo_medidor" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="fallas" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+        {tab === "gerencia" &&
+          tabsPermitidos.includes("gerencia") &&
+          (gerenciaLoading ? (
+            <div className="lay-inline-loader">
+              <LoadingState
+                message="Cargando Dashboard Gerencia..."
+                detail={
+                  distritoDashboardFiltro === "TODOS"
+                    ? "Consolidando información de todos los distritos"
+                    : "Procesando consumo acumulado, sensores, zonas y anomalías"
+                }
+              />
             </div>
-
-            <div className="panel">
-              <h3>Tabla de anomalías</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Cuenta</th>
-                    <th>Cliente</th>
-                    <th>Zona</th>
-                    <th>Categoría</th>
-                    <th>Medidor</th>
-                    <th>Consumo</th>
-                    <th>Anomalía</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(gerencia?.anomalias || []).map((a) => (
-                    <tr key={a.cuenta_id}>
-                      <td>{a.cuenta_id}</td>
-                      <td>{a.nombre_cliente}</td>
-                      <td>{a.zona}</td>
-                      <td>{a.categoria}</td>
-                      <td>{a.medidor_mac}</td>
-                      <td>{formatNumber(a.consumo_m3)}</td>
-                      <td><span className="badge warning">{a.anomalia}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          ) : gerencia ? (
+            <DashboardGerencia gerencia={gerencia} periodo={periodo} />
+          ) : (
+            <div className="lay-state-box lay-state-error">
+              No se cargaron datos de Gerencia. Cambia el filtro o revisa F12.
             </div>
-          </section>
-        )}
+          ))}
 
-        {tab === "contabilidad" && (
-          <section>
-            <h2>Dashboard 3 - Departamento Financiero / Contabilidad SEMAPA</h2>
-
-            <div className="grid-5">
-              <KpiCard title="Monto facturado" value={formatMoney(contabilidad?.kpis?.monto_facturado_bs)} />
-              <KpiCard title="Monto recaudado" value={formatMoney(contabilidad?.kpis?.monto_recaudado_bs)} />
-              <KpiCard title="Cartera vencida" value={formatMoney(contabilidad?.kpis?.cartera_vencida_bs)} />
-              <KpiCard title="% recuperación" value={`${formatNumber(contabilidad?.kpis?.recuperacion_pct)}%`} />
-              <KpiCard title="Preavisos emitidos" value={formatNumber(contabilidad?.kpis?.preavisos_emitidos)} />
+        {tab === "contabilidad" &&
+          tabsPermitidos.includes("contabilidad") &&
+          (contabilidadLoading ? (
+            <div className="lay-inline-loader">
+              <LoadingState
+                message="Cargando Dashboard Contabilidad..."
+                detail={
+                  distritoDashboardFiltro === "TODOS"
+                    ? "Sumando facturación y cartera vencida de todos los distritos"
+                    : "Calculando facturación, mora, cartera vencida y preavisos"
+                }
+              />
             </div>
-
-            <div className="dashboard-grid">
-              <div className="panel">
-                <h3>Facturación por categoría</h3>
-                <ResponsiveContainer width="100%" height={330}>
-                  <BarChart data={contabilidad?.categorias || []}>
-                    <XAxis dataKey="categoria" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="monto_facturado_bs" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="panel">
-                <h3>Embudo de cobranza preventiva</h3>
-                <ResponsiveContainer width="100%" height={330}>
-                  <FunnelChart>
-                    <Tooltip />
-                    <Funnel dataKey="cantidad" data={contabilidad?.embudo || []} nameKey="etapa">
-                      <LabelList position="right" fill="#111" stroke="none" dataKey="etapa" />
-                    </Funnel>
-                  </FunnelChart>
-                </ResponsiveContainer>
-              </div>
+          ) : contabilidad ? (
+            <DashboardContabilidad
+              contabilidad={contabilidad}
+              periodo={periodo}
+            />
+          ) : (
+            <div className="lay-state-box lay-state-error">
+              No se cargaron datos de Contabilidad. Cambia el filtro o revisa F12.
             </div>
+          ))}
 
-            <div className="panel">
-              <h3>Proyección financiera 3 meses</h3>
-              <ResponsiveContainer width="100%" height={330}>
-                <LineChart data={contabilidad?.proyeccion || []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="mes" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="ingreso_proyectado_bs" />
-                  <Line type="monotone" dataKey="recaudacion_estimada_bs" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
-        )}
-
-        {tab === "mapa" && (
-          <section>
-            <h2>Mapa de Cochabamba, cuentas, medidores y preavisos</h2>
-
-            <div className="map-layout">
-              <div className="panel map-panel">
-                <div className="filters-inline">
-                  <select value={zona} onChange={(e) => setZona(e.target.value)}>
-                    {zonas.map((z) => (
-                      <option key={z} value={z}>
-                        {z}
-                      </option>
-                    ))}
-                  </select>
-
-                  <input
-                    placeholder="Buscar cuenta, cliente, medidor o dirección"
-                    value={busqueda}
-                    onChange={(e) => setBusqueda(e.target.value)}
-                  />
-                </div>
-
-                <MapaCuentas
-                  cuentas={cuentasFiltradas}
-                  distritoActual={distritoActual}
-                  geojson={geojson}
-                  cuentaSeleccionada={cuentaSeleccionada}
-                  onCuentaClick={seleccionarCuenta}
-                />
-              </div>
-
-              <div className="panel detail-panel">
-                {!cuentaSeleccionada ? (
-                  <div className="empty-state">
-                    <h3>Selecciona un medidor en el mapa</h3>
-                    <p>Al hacer clic en un punto del mapa se mostrará la información del cliente y los botones de preaviso.</p>
-                  </div>
-                ) : (
-                  <div>
-                    <h3>Información del medidor</h3>
-
-                    <div className="client-box">
-                      <p><b>Cuenta:</b> {cuentaSeleccionada.cuenta_id}</p>
-                      <p><b>Señor(a):</b> {cuentaSeleccionada.nombre_cliente}</p>
-                      <p><b>Distrito:</b> {cuentaSeleccionada.distrito}</p>
-                      <p><b>Zona:</b> {cuentaSeleccionada.zona}</p>
-                      <p><b>Categoría:</b> {cuentaSeleccionada.categoria} {cuentaSeleccionada.subcategoria}</p>
-                      <p><b>Medidor:</b> {cuentaSeleccionada.medidor_mac}</p>
-                      <p><b>Dirección:</b> {cuentaSeleccionada.direccion}</p>
-                    </div>
-
-                    <div className="mini-kpis">
-                      <KpiCard
-                        title="Consumo periodo"
-                        value={`${formatNumber(consumoPeriodoCuenta?.consumo_m3 || 0)} m³`}
-                      />
-                      <KpiCard
-                        title="Lecturas"
-                        value={formatNumber(consumoPeriodoCuenta?.total_lecturas || 0)}
-                      />
-                    </div>
-
-                    <h3>Consumo histórico</h3>
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={[...consumoCuenta].reverse()}>
-                        <XAxis dataKey="periodo" />
-                        <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="consumo_m3" />
-                      </BarChart>
-                    </ResponsiveContainer>
-
-                    <h3>Enviar preaviso</h3>
-
-                    <input
-                      placeholder="WhatsApp +591..."
-                      value={whatsapp}
-                      onChange={(e) => setWhatsapp(e.target.value)}
-                    />
-
-                    <input
-                      placeholder="SMS +591..."
-                      value={sms}
-                      onChange={(e) => setSms(e.target.value)}
-                    />
-
-                    <input
-                      placeholder="Email cliente@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-
-                    <div className="buttons">
-                      <button onClick={generarPdf}>Generar PDF</button>
-                      <button className="primary" onClick={enviarPreaviso}>
-                        Enviar WhatsApp, SMS y Email
-                      </button>
-                    </div>
-
-                    {resultadoEnvio && (
-                      <div className="result-box">
-                        <h4>Resultado</h4>
-                        <p>{resultadoEnvio.mensaje}</p>
-
-                        {resultadoEnvio.pdfs?.rollo && (
-                          <a
-                            href={`${API}/api/download?path=${encodeURIComponent(resultadoEnvio.pdfs.rollo)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Descargar PDF rollo 55 mm
-                          </a>
-                        )}
-
-                        {resultadoEnvio.pdfs?.media_carta && (
-                          <a
-                            href={`${API}/api/download?path=${encodeURIComponent(resultadoEnvio.pdfs.media_carta)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Descargar PDF media carta
-                          </a>
-                        )}
-
-                        {resultadoEnvio.enviados && (
-                          <p className="success">Mensajes enviados a RabbitMQ: {resultadoEnvio.enviados.length}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </section>
+        {tab === "mapa" && tabsPermitidos.includes("mapa") && (
+          <MapaDistrital
+            mapaLoading={mapaLoading}
+            filtrosOpciones={filtrosOpciones}
+            distritoFiltro={distritoFiltro}
+            setDistritoFiltro={setDistritoFiltro}
+            zonaFiltro={zonaFiltro}
+            setZonaFiltro={setZonaFiltro}
+            categoriaFiltro={categoriaFiltro}
+            setCategoriaFiltro={setCategoriaFiltro}
+            subcategoriaFiltro={subcategoriaFiltro}
+            setSubcategoriaFiltro={setSubcategoriaFiltro}
+            modeloMedidorFiltro={modeloMedidorFiltro}
+            setModeloMedidorFiltro={setModeloMedidorFiltro}
+            estadoMedidorFiltro={estadoMedidorFiltro}
+            setEstadoMedidorFiltro={setEstadoMedidorFiltro}
+            estadoContratoFiltro={estadoContratoFiltro}
+            setEstadoContratoFiltro={setEstadoContratoFiltro}
+            tipoServicioFiltro={tipoServicioFiltro}
+            setTipoServicioFiltro={setTipoServicioFiltro}
+            limpiarFiltrosMapa={limpiarFiltrosMapa}
+            busqueda={busqueda}
+            setBusqueda={setBusqueda}
+            cuentasFiltradas={cuentasFiltradas}
+            totalCuentasMapa={(cuentasMapa.length ? cuentasMapa : cuentas).length}
+            distritoActual={distritoMapaActual}
+            geojson={geojson}
+            cuentaSeleccionada={cuentaSeleccionada}
+            seleccionarCuenta={seleccionarCuenta}
+            consumoCuenta={consumoCuenta}
+            consumoPeriodoCuenta={consumoPeriodoCuenta}
+            whatsapp={whatsapp}
+            setWhatsapp={setWhatsapp}
+            sms={sms}
+            setSms={setSms}
+            email={email}
+            setEmail={setEmail}
+            generarPdf={generarPdf}
+            enviarPreavisoCuenta={enviarPreavisoCuenta}
+            resultadoEnvio={resultadoEnvio}
+          />
         )}
       </main>
     </div>
-  );
-}
-
-function MapaGeneral({ distritos, distritoActual, geojson, onDistritoClick }) {
-  const center = distritoActual?.lat && distritoActual?.lon
-    ? [distritoActual.lat, distritoActual.lon]
-    : [-17.3895, -66.1568];
-
-  const maxConsumo = Math.max(...distritos.map((d) => Number(d.consumo_m3 || 0)), 1);
-
-  return (
-    <MapContainer center={center} zoom={12} className="map">
-      <TileLayer
-        attribution="OpenStreetMap"
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-
-      {distritoActual && <FlyToDistrito lat={distritoActual.lat} lon={distritoActual.lon} />}
-
-      {geojson?.type && <GeoJSON data={geojson} />}
-
-      {distritos.map((d) => {
-        if (!d.lat || !d.lon) return null;
-
-        const radius = 8 + (Number(d.consumo_m3 || 0) / maxConsumo) * 22;
-
-        return (
-          <CircleMarker
-            key={d.distrito}
-            center={[d.lat, d.lon]}
-            radius={radius}
-            eventHandlers={{
-              click: () => onDistritoClick(d.distrito),
-            }}
-          >
-            <Popup>
-              <div className="popup-card">
-                <h3>Distrito {d.distrito}</h3>
-                <p><b>Consumo:</b> {formatNumber(d.consumo_m3)} m³</p>
-                <p><b>Zonas:</b> {d.total_zonas}</p>
-                <p><b>Infraestructuras:</b> {d.total_infraestructuras}</p>
-                <button onClick={() => onDistritoClick(d.distrito)}>Ver distrito</button>
-              </div>
-            </Popup>
-          </CircleMarker>
-        );
-      })}
-    </MapContainer>
-  );
-}
-
-function MapaCuentas({ cuentas, distritoActual, geojson, cuentaSeleccionada, onCuentaClick }) {
-  const center = distritoActual?.lat && distritoActual?.lon
-    ? [distritoActual.lat, distritoActual.lon]
-    : [-17.3895, -66.1568];
-
-  return (
-    <MapContainer center={center} zoom={13} className="map big-map">
-      <TileLayer
-        attribution="OpenStreetMap"
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-
-      {distritoActual && <FlyToDistrito lat={distritoActual.lat} lon={distritoActual.lon} />}
-
-      {geojson?.type && <GeoJSON data={geojson} />}
-
-      {cuentas.slice(0, 900).map((c) => {
-        if (!c.latitud || !c.longitud) return null;
-
-        const selected = cuentaSeleccionada?.cuenta_id === c.cuenta_id;
-
-        return (
-          <Marker
-            key={c.cuenta_id}
-            position={[c.latitud, c.longitud]}
-            icon={markerIcon}
-            eventHandlers={{
-              click: () => onCuentaClick(c),
-            }}
-          >
-            <Popup>
-              <div className="popup-card client-popup">
-                <h3>Cuenta: {c.cuenta_id}</h3>
-                <p><b>Señor(a):</b> {c.nombre_cliente}</p>
-                <p><b>Distrito:</b> {c.distrito}</p>
-                <p><b>Zona:</b> {c.zona}</p>
-                <p><b>Categoría:</b> {c.categoria}</p>
-                <p><b>Medidor:</b> {c.medidor_mac}</p>
-                <button onClick={() => onCuentaClick(c)}>
-                  Ver consumo y enviar preaviso
-                </button>
-              </div>
-            </Popup>
-          </Marker>
-        );
-      })}
-    </MapContainer>
   );
 }
 

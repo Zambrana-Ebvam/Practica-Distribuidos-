@@ -1,0 +1,11 @@
+.con-page {
+  display: block;
+}
+
+.con-page h2 {
+  margin: 12px 0 18px;
+}
+
+.con-page table {
+  margin-top: 12px;
+}

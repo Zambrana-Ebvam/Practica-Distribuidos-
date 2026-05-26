@@ -236,7 +236,16 @@ select {
   outline: none;
   font-size: 14px;
 }
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch; /* Hace que el scroll en celulares sea suave */
+}
 
+/* Opcional: Para asegurar que el texto de la cabecera no se amontone */
+th {
+  white-space: nowrap; 
+}
 table {
   width: 100%;
   border-collapse: collapse;
@@ -397,5 +406,301 @@ td {
   .content {
     margin-left: 0;
     width: 100%;
+  }
+}
+
+.section-description {
+  color: #64748b;
+  margin-top: -8px;
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+
+.empty-box {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  padding: 20px;
+  color: #64748b;
+  text-align: center;
+  font-weight: 700;
+}
+
+.badge.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.map-wrapper {
+  position: relative;
+}
+
+.heatmap-legend {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 900;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+  font-size: 12px;
+  line-height: 1.7;
+  color: #0f172a;
+  min-width: 250px;
+}
+
+.heatmap-legend div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.heatmap-legend span {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+}
+.popup-card h4 {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.popup-card hr {
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+  margin: 10px 0;
+}
+
+.popup-card p {
+  margin: 4px 0;
+  line-height: 1.35;
+}
+
+body {
+  background: linear-gradient(180deg, #eaf6ff 0%, #f8fbff 100%);
+  color: #0f172a;
+}
+
+.content {
+  background: transparent;
+}
+
+/* Paneles más modernos */
+.panel {
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 22px;
+  padding: 20px;
+  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.09);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.panel h3 {
+  color: #0f172a;
+  font-size: 18px;
+  margin-bottom: 16px;
+}
+
+/* KPI coloridos */
+.kpi-card {
+  position: relative;
+  overflow: hidden;
+  border: none;
+  color: white;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.15);
+}
+
+.kpi-card::after {
+  content: "";
+  position: absolute;
+  right: -25px;
+  top: -25px;
+  width: 90px;
+  height: 90px;
+  background: rgba(255, 255, 255, 0.17);
+  border-radius: 999px;
+}
+
+.kpi-card span {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 700;
+}
+
+.kpi-card strong {
+  color: white;
+  font-size: 30px;
+  font-weight: 900;
+}
+
+.kpi-card small {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 600;
+}
+
+/* Colores por posición de KPI */
+.grid-5 .kpi-card:nth-child(1) {
+  background: linear-gradient(135deg, #0ea5e9, #0369a1);
+}
+
+.grid-5 .kpi-card:nth-child(2) {
+  background: linear-gradient(135deg, #22c55e, #15803d);
+}
+
+.grid-5 .kpi-card:nth-child(3) {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+}
+
+.grid-5 .kpi-card:nth-child(4) {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.grid-5 .kpi-card:nth-child(5) {
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+}
+
+/* Tablas más limpias */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  background: white;
+}
+
+th {
+  background: #e0f2fe;
+  color: #075985;
+  font-weight: 800;
+}
+
+td {
+  color: #334155;
+}
+
+tbody tr:hover {
+  background: #f8fafc;
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+}
+
+.badge.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge.info {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* Inputs y selects */
+input,
+select {
+  background: white;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+input:focus,
+select:focus {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.18);
+}
+
+/* Sidebar más elegante */
+.sidebar {
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+}
+
+.logo {
+  background: linear-gradient(135deg, #0ea5e9, #22c55e);
+}
+
+nav button {
+  transition: all 0.2s ease;
+}
+
+nav button.active,
+nav button:hover {
+  background: linear-gradient(135deg, #0ea5e9, #0369a1);
+  transform: translateX(3px);
+}
+
+/* Leyenda del mapa */
+.heatmap-legend {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #bae6fd;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+}
+
+/* Popup mapa */
+.popup-card {
+  width: 250px;
+}
+
+.popup-card h3 {
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.popup-card button,
+.buttons button {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+}
+
+.popup-card button:hover,
+.buttons button:hover {
+  filter: brightness(0.95);
+}
+
+/* Responsive */
+@media (max-width: 1300px) {
+  .grid-5 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .grid-5 {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
   }
 }
