@@ -1,0 +1,11 @@
+.git
+.gitignore
+venv
+.venv
+__pycache__
+*.pyc
+frontend/semapa-dashboard/node_modules
+frontend/semapa-dashboard/dist
+outputs/preavisos
+outputs/mensajes
+outputs/validacion_carga

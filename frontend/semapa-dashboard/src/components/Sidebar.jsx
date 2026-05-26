@@ -12,6 +12,10 @@ function Sidebar({
     window.open("/totem", "_blank", "width=1100,height=760");
   }
 
+  function abrirLecturaMovil() {
+    window.open("/lectura-movil", "_blank", "width=430,height=860");
+  }
+
   const itemsVisibles = menuItems.filter((item) =>
     visibleTabs.includes(item.id)
   );
@@ -46,6 +50,7 @@ function Sidebar({
         ))}
 
         <button onClick={abrirTotem}>Tótem</button>
+        <button onClick={abrirLecturaMovil}>Lectura movil</button>
       </nav>
 
       {usuario && (

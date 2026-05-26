@@ -24,6 +24,8 @@ services:
     hostname: cassandra-node2
     depends_on:
       - cassandra-node1
+    ports:
+      - "9043:9042"
     environment:
       - CASSANDRA_CLUSTER_NAME=SEMAPA_CLUSTER
       - CASSANDRA_DC=DC1
@@ -44,6 +46,57 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    networks:
+      - cassandra-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: semapa-backend
+    depends_on:
+      - cassandra-node1
+      - rabbitmq
+    ports:
+      - "8001:8001"
+    environment:
+      - CASSANDRA_HOST=cassandra-node1
+      - CASSANDRA_PORT=9042
+      - CASSANDRA_KEYSPACE=semapa
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_QUEUE=semapa_preavisos
+    volumes:
+      - ./outputs:/app/outputs
+    networks:
+      - cassandra-net
+
+  worker-mensajes:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: semapa-worker-mensajes
+    depends_on:
+      - rabbitmq
+    command: ["python", "app/worker_mensajes.py"]
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_QUEUE=semapa_preavisos
+    volumes:
+      - ./outputs:/app/outputs
+    networks:
+      - cassandra-net
+
+  frontend:
+    build:
+      context: ./frontend/semapa-dashboard
+      dockerfile: Dockerfile
+    container_name: semapa-frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8001
     networks:
       - cassandra-net
 

@@ -136,6 +136,39 @@
   text-align: center;
 }
 
+.tot-tariff {
+  margin-top: 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.tot-tariff h2 {
+  margin: 0;
+  padding: 14px 16px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.tot-tariff table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tot-tariff th,
+.tot-tariff td {
+  padding: 12px 14px;
+  border-top: 1px solid #e2e8f0;
+  text-align: left;
+}
+
+.tot-tariff th {
+  color: #475569;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
 @media (max-width: 700px) {
   .tot-form {
     flex-direction: column;

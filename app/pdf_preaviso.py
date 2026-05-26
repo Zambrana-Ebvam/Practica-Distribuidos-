@@ -116,6 +116,8 @@ TARIFAS_ESCALONADAS = {
     },
 }
 
+CARGO_FIJO_M3 = 12
+
 
 def normalizar_subcategoria(categoria, subcategoria=""):
     categoria = str(categoria or "").upper().strip()
@@ -157,14 +159,14 @@ def calcular_factura_agua(consumo_m3, categoria, subcategoria=""):
 
     detalle = [
         {
-            "concepto": "Cargo fijo hasta 12 m3",
-            "m3": min(consumo_m3, 12),
+            "concepto": f"Cargo fijo hasta {CARGO_FIJO_M3} m3",
+            "m3": min(consumo_m3, CARGO_FIJO_M3),
             "tarifa": fijo,
             "subtotal": fijo,
         }
     ]
 
-    if consumo_m3 <= 12:
+    if consumo_m3 <= CARGO_FIJO_M3:
         return {
             "codigo_tarifa": codigo,
             "consumo_m3": round(consumo_m3, 2),
@@ -188,7 +190,7 @@ def calcular_factura_agua(consumo_m3, categoria, subcategoria=""):
         monto += subtotal
 
         detalle.append({
-            "concepto": f"Rango {desde}-{hasta if hasta else 'más'} m3",
+            "concepto": f"Rango {desde}-{hasta if hasta else 'mas'} m3",
             "m3": round(m3_rango, 2),
             "tarifa": precio,
             "subtotal": round(subtotal, 2),
@@ -205,6 +207,24 @@ def calcular_factura_agua(consumo_m3, categoria, subcategoria=""):
 def obtener_tarifa(categoria, subcategoria=""):
     codigo = normalizar_subcategoria(categoria, subcategoria)
     return TARIFAS_ESCALONADAS[codigo]["fijo"]
+
+
+def preparar_factura_cuenta(detalle, consumo_periodo):
+    categoria = detalle.get("categoria", "")
+    subcategoria = detalle.get("subcategoria", "")
+    consumo_m3 = float(consumo_periodo.get("consumo_m3", 0))
+    factura = calcular_factura_agua(consumo_m3, categoria, subcategoria)
+
+    return {
+        "cuenta_id": detalle.get("cuenta_id", ""),
+        "medidor": detalle.get("medidor_mac", ""),
+        "categoria": categoria,
+        "subcategoria": subcategoria,
+        "codigo_tarifa": factura["codigo_tarifa"],
+        "consumo_m3": factura["consumo_m3"],
+        "monto_facturado_bs": factura["monto_bs"],
+        "detalle_tarifario": factura["detalle"],
+    }
 
 
 def limpiar_nombre_archivo(texto):

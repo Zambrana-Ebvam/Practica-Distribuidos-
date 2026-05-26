@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import {
   Bar,
   BarChart,
@@ -11,6 +13,7 @@ import KpiCard from "../components/KpiCard";
 import MapaCuentas from "../components/MapaCuentas";
 import LoadingState from "../components/LoadingState";
 import { API_BASE_URL } from "../services/apiClient";
+import { obtenerEvidenciasPreaviso } from "../services/preavisoService";
 import { formatMoney, formatNumber } from "../utils/formatters";
 
 import "../styles/map_mapa_distrital.css";
@@ -56,6 +59,28 @@ function MapaDistrital({
   resultadoEnvio,
 }) {
   const totalFiltrado = cuentasFiltradas?.length || 0;
+  const [evidencias, setEvidencias] = useState([]);
+  const [evidenciasDir, setEvidenciasDir] = useState("");
+  const [evidenciasLoading, setEvidenciasLoading] = useState(false);
+  const [evidenciasError, setEvidenciasError] = useState("");
+
+  async function cargarEvidencias() {
+    try {
+      setEvidenciasLoading(true);
+      setEvidenciasError("");
+
+      const data = await obtenerEvidenciasPreaviso(20);
+      setEvidencias(data?.mensajes || []);
+      setEvidenciasDir(data?.directorio || "");
+    } catch (error) {
+      setEvidenciasError(
+        error?.response?.data?.detail ||
+          "No se pudo leer la evidencia de mensajes."
+      );
+    } finally {
+      setEvidenciasLoading(false);
+    }
+  }
 
   return (
     <section className="map-page">
@@ -209,7 +234,7 @@ function MapaDistrital({
         <div className="lay-inline-loader">
           <LoadingState
             message="Cargando cuentas del mapa..."
-            detail="Consultando cuentas por distrito desde Cassandra"
+            detail="Consultando cuentas consolidadas desde Cassandra"
           />
         </div>
       ) : (
@@ -348,6 +373,23 @@ function MapaDistrital({
                       </p>
                     )}
 
+                    {resultadoEnvio.codigo_tarifa && (
+                      <p>
+                        <b>Tarifa aplicada:</b> {resultadoEnvio.codigo_tarifa}
+                      </p>
+                    )}
+
+                    {(resultadoEnvio.detalle_tarifario || []).length > 0 && (
+                      <div className="map-tariff-detail">
+                        {(resultadoEnvio.detalle_tarifario || []).map((item) => (
+                          <div key={`${item.concepto}-${item.subtotal}`}>
+                            <span>{item.concepto}</span>
+                            <strong>{formatMoney(item.subtotal)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {resultadoEnvio.pdfs?.rollo && (
                       <a
                         href={`${API_BASE_URL}/api/download?path=${encodeURIComponent(
@@ -377,6 +419,50 @@ function MapaDistrital({
                         Mensajes enviados a RabbitMQ:{" "}
                         {resultadoEnvio.enviados.length}
                       </p>
+                    )}
+
+                    {resultadoEnvio.enviados && (
+                      <button
+                        className="map-evidence-button"
+                        type="button"
+                        onClick={cargarEvidencias}
+                        disabled={evidenciasLoading}
+                      >
+                        {evidenciasLoading
+                          ? "Leyendo evidencia..."
+                          : "Ver evidencia RabbitMQ"}
+                      </button>
+                    )}
+
+                    {evidenciasError && (
+                      <p className="map-evidence-error">{evidenciasError}</p>
+                    )}
+
+                    {evidencias.length > 0 && (
+                      <div className="map-evidence-box">
+                        <h4>Bandeja de mensajes recibidos por el worker</h4>
+                        <p>
+                          Cola RabbitMQ: <b>semapa_preavisos</b>
+                        </p>
+                        <p>
+                          Evidencia guardada en: <b>{evidenciasDir}</b>
+                        </p>
+
+                        {evidencias.slice(0, 6).map((item) => (
+                          <div
+                            className="map-evidence-item"
+                            key={`${item.archivo}-${item.recibido_en}`}
+                          >
+                            <span>{item.canal}</span>
+                            <strong>{item.destinatario}</strong>
+                            <small>
+                              {item.cuenta_id} - {item.periodo} -{" "}
+                              {item.archivo}
+                            </small>
+                            <p>{item.mensaje}</p>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}

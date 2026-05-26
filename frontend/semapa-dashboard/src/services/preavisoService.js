@@ -26,3 +26,8 @@ export async function enviarPreaviso({
 
   return response.data;
 }
+
+export async function obtenerEvidenciasPreaviso(limit = 30) {
+  const response = await apiClient.get(`/api/preaviso/evidencias?limit=${limit}`);
+  return response.data;
+}

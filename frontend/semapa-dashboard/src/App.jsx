@@ -10,6 +10,7 @@ import DashboardGerencia from "./pages/DashboardGerencia";
 import DashboardContabilidad from "./pages/DashboardContabilidad";
 import MapaDistrital from "./pages/MapaDistrital";
 import TotemAutoservicio from "./pages/TotemAutoservicio";
+import LecturaMovil from "./pages/LecturaMovil";
 
 import {
   getConsumoCuenta,
@@ -211,7 +212,13 @@ function combinarContabilidad(datosPorDistrito, periodoActual) {
       acc.monto_facturado_bs += toNumber(k.monto_facturado_bs);
       acc.monto_recaudado_bs += toNumber(k.monto_recaudado_bs);
       acc.cartera_vencida_bs += toNumber(k.cartera_vencida_bs);
+      acc.monto_preavisos_mensual_bs += toNumber(
+        k.monto_preavisos_mensual_bs ?? k.cartera_vencida_bs
+      );
+      acc.monto_preavisos_enviados_bs += toNumber(k.monto_preavisos_enviados_bs);
       acc.preavisos_emitidos += toNumber(k.preavisos_emitidos);
+      acc.preavisos_enviados_rabbitmq += toNumber(k.preavisos_enviados_rabbitmq);
+      acc.mensajes_enviados_rabbitmq += toNumber(k.mensajes_enviados_rabbitmq);
       acc.cuentas_morosas += toNumber(k.cuentas_morosas);
 
       return acc;
@@ -223,8 +230,12 @@ function combinarContabilidad(datosPorDistrito, periodoActual) {
       monto_recaudado_bs: 0,
       recuperacion_pct: 0,
       cartera_vencida_bs: 0,
+      monto_preavisos_mensual_bs: 0,
+      monto_preavisos_enviados_bs: 0,
       mora_pct: 0,
       preavisos_emitidos: 0,
+      preavisos_enviados_rabbitmq: 0,
+      mensajes_enviados_rabbitmq: 0,
       cuentas_morosas: 0,
       mejor_canal_cobranza: "SIN DATOS",
     }
@@ -233,6 +244,8 @@ function combinarContabilidad(datosPorDistrito, periodoActual) {
   kpis.monto_facturado_bs = round2(kpis.monto_facturado_bs);
   kpis.monto_recaudado_bs = round2(kpis.monto_recaudado_bs);
   kpis.cartera_vencida_bs = round2(kpis.cartera_vencida_bs);
+  kpis.monto_preavisos_mensual_bs = round2(kpis.monto_preavisos_mensual_bs);
+  kpis.monto_preavisos_enviados_bs = round2(kpis.monto_preavisos_enviados_bs);
 
   kpis.recuperacion_pct =
     kpis.monto_facturado_bs > 0
@@ -369,8 +382,7 @@ function App() {
   const [distrito, setDistrito] = useState("");
   const [periodo, setPeriodo] = useState("2026-04");
 
-  // Importante: por defecto Distrito 1, no TODOS.
-  // TODOS hace 15 llamadas y tarda mucho.
+  // Importante: por defecto Distrito 1; TODOS ahora usa endpoint consolidado.
   const [distritoDashboardFiltro, setDistritoDashboardFiltro] = useState("1");
 
   const [cuentas, setCuentas] = useState([]);
@@ -401,6 +413,7 @@ function App() {
   const [resultadoEnvio, setResultadoEnvio] = useState(null);
 
   const isTotemRoute = window.location.pathname === "/totem";
+  const isLecturaMovilRoute = window.location.pathname === "/lectura-movil";
 
   const tabsPermitidos = useMemo(() => {
     return usuario ? getTabsPermitidosPorRol(usuario.rol) : [];
@@ -626,6 +639,14 @@ function App() {
       setMapaLoading(true);
       setAviso("");
 
+      try {
+        const data = await getCuentasDistrito("TODOS", 100000);
+        setCuentasMapa(data || []);
+        return;
+      } catch (error) {
+        mostrarErrorReal("CUENTAS MAPA TODOS CONSOLIDADO", error);
+      }
+
       const resultados = [];
 
       for (const d of distritosData || []) {
@@ -672,6 +693,14 @@ function App() {
     try {
       setGerenciaLoading(true);
       setAviso("");
+
+      try {
+        const gerenciaData = await getDashboardGerencia("TODOS", periodoActual);
+        setGerencia(gerenciaData);
+        return;
+      } catch (error) {
+        mostrarErrorReal("DASHBOARD GERENCIA TODOS CONSOLIDADO", error);
+      }
 
       const ids = obtenerDistritosIds();
       const validos = [];
@@ -731,6 +760,17 @@ function App() {
     try {
       setContabilidadLoading(true);
       setAviso("");
+
+      try {
+        const contabilidadData = await getDashboardContabilidad(
+          "TODOS",
+          periodoActual
+        );
+        setContabilidad(contabilidadData);
+        return;
+      } catch (error) {
+        mostrarErrorReal("DASHBOARD CONTABILIDAD TODOS CONSOLIDADO", error);
+      }
 
       const ids = obtenerDistritosIds();
       const validos = [];
@@ -1138,6 +1178,10 @@ function App() {
 
   if (isTotemRoute) {
     return <TotemAutoservicio periodoInicial={periodo || "2026-04"} />;
+  }
+
+  if (isLecturaMovilRoute) {
+    return <LecturaMovil />;
   }
 
   if (!usuario) {

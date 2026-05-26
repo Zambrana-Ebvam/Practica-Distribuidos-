@@ -1,10 +1,11 @@
+import os
 import json
 import pika
 from datetime import datetime
 
 
-RABBIT_HOST = "localhost"
-QUEUE_NAME = "semapa_preavisos"
+RABBIT_HOST = os.getenv("RABBITMQ_HOST", "localhost")
+QUEUE_NAME = os.getenv("RABBITMQ_QUEUE", "semapa_preavisos")
 
 
 def publicar_preaviso(canal, destinatario, cuenta_id, periodo, mensaje, pdf_rollo, pdf_media_carta):

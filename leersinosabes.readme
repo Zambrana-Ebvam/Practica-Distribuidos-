@@ -1,0 +1,175 @@
+# SEMAPA - guia rapida con Docker
+
+Este archivo explica como levantar el sistema completo en una maquina nueva:
+Cassandra, RabbitMQ, backend FastAPI, worker de mensajes y frontend React.
+
+## Requisitos
+
+- Docker Desktop instalado y abierto.
+- Git instalado.
+- Puertos libres:
+  - 5173 para frontend
+  - 8001 para backend
+  - 9042 y 9043 para Cassandra
+  - 5672 y 15672 para RabbitMQ
+
+## 1. Clonar el proyecto
+
+```bash
+git clone https://github.com/Zambrana-Ebvam/Practica-Distribuidos-.git
+cd Practica-Distribuidos-
+git checkout ultimos_cambios
+```
+
+## 2. Levantar servicios con Docker
+
+```bash
+docker compose up -d --build
+```
+
+Esto levanta:
+
+- `cassandra-node1`
+- `cassandra-node2`
+- `semapa-rabbitmq`
+- `semapa-backend`
+- `semapa-worker-mensajes`
+- `semapa-frontend`
+
+Es normal que Cassandra tarde 1 o 2 minutos en quedar lista la primera vez.
+
+Puedes revisar logs con:
+
+```bash
+docker compose logs -f cassandra-node1
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f worker-mensajes
+```
+
+## 3. Crear tablas en Cassandra por primera vez
+
+Cuando Cassandra ya este lista, ejecutar:
+
+```bash
+docker compose cp schema.cql cassandra-node1:/schema.cql
+docker compose exec cassandra-node1 cqlsh -f /schema.cql
+```
+
+Si `cqlsh` dice que Cassandra todavia no responde, espera unos segundos y repite el segundo comando.
+
+## 4. Cargar datos la primera vez
+
+Los CSV deben estar en la carpeta `data/`:
+
+- `data/contratos.csv`
+- `data/infraestructuras.csv`
+- `data/lecturas.csv`
+- `data/medidores.csv`
+
+Luego ejecuta:
+
+```bash
+docker compose exec backend python app/load_data.py
+```
+
+La carga crea reportes de validacion en:
+
+```text
+outputs/validacion_carga/
+```
+
+## 5. Abrir el sistema
+
+Frontend:
+
+```text
+http://localhost:5173
+```
+
+Backend / documentacion API:
+
+```text
+http://localhost:8001/docs
+```
+
+RabbitMQ Management:
+
+```text
+http://localhost:15672
+```
+
+Credenciales de RabbitMQ por defecto:
+
+```text
+usuario: guest
+password: guest
+```
+
+## 6. Usuarios del sistema
+
+```text
+alcalde / 1234
+gerente / 1234
+contador / 1234
+```
+
+## 7. Probar mensajeria de preavisos
+
+El backend publica los preavisos en RabbitMQ en la cola:
+
+```text
+semapa_preavisos
+```
+
+El worker `semapa-worker-mensajes` consume esa cola y guarda evidencia en:
+
+```text
+outputs/mensajes/
+```
+
+Tambien puedes ver la evidencia desde la pantalla de mapa/preavisos usando el boton de evidencia RabbitMQ.
+
+## 8. Reiniciar todo desde cero
+
+Si quieres borrar Cassandra y volver a cargar todo:
+
+```bash
+docker compose down -v
+docker compose up -d --build
+docker compose cp schema.cql cassandra-node1:/schema.cql
+docker compose exec cassandra-node1 cqlsh -f /schema.cql
+docker compose exec backend python app/load_data.py
+```
+
+## 9. Comandos utiles
+
+Detener:
+
+```bash
+docker compose down
+```
+
+Reconstruir:
+
+```bash
+docker compose up -d --build
+```
+
+Ver contenedores:
+
+```bash
+docker compose ps
+```
+
+Entrar al backend:
+
+```bash
+docker compose exec backend sh
+```
+
+Entrar a Cassandra:
+
+```bash
+docker compose exec cassandra-node1 cqlsh
+```

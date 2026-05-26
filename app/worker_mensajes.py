@@ -8,8 +8,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_DIR = os.path.join(BASE_DIR, "outputs", "mensajes")
 os.makedirs(LOG_DIR, exist_ok=True)
 
-RABBIT_HOST = "localhost"
-QUEUE_NAME = "semapa_preavisos"
+RABBIT_HOST = os.getenv("RABBITMQ_HOST", "localhost")
+QUEUE_NAME = os.getenv("RABBITMQ_QUEUE", "semapa_preavisos")
 
 
 def procesar_mensaje(ch, method, properties, body):

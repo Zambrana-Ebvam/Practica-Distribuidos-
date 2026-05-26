@@ -2,6 +2,7 @@ import os
 import re
 import unicodedata
 import pandas as pd
+# pyrefly: ignore [missing-import]
 from cassandra.concurrent import execute_concurrent_with_args
 from db import get_session
 
@@ -19,8 +20,8 @@ os.makedirs(VALIDACION_DIR, exist_ok=True)
 # ==========================================================
 LIMITE_REGISTROS_POR_CSV = None
 
-BATCH_SIZE_INSERT = 5000
-CONCURRENCY = 150
+BATCH_SIZE_INSERT = 400
+CONCURRENCY = 200
 
 DISTRITOS_VALIDOS = {
     "1", "2", "3", "4", "5", "6", "7", "8", "9",

@@ -1,0 +1,28 @@
+# Usa una imagen base oficial de Python ligera
+FROM python:3.10-slim
+
+# Evita que Python escriba archivos .pyc en el disco y asegura que la salida se envíe directamente al terminal
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app/app:/app
+
+# Establece el directorio de trabajo en el contenedor
+WORKDIR /app
+
+# Instala dependencias del sistema necesarias para construir librerías de Python si hicieran falta
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copia e instala los requerimientos de Python
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copia todo el contenido del backend al contenedor
+COPY . /app/
+
+# Expone el puerto en el que corre FastAPI
+EXPOSE 8001
+
+# Comando por defecto para iniciar la API con Uvicorn
+CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8001"]

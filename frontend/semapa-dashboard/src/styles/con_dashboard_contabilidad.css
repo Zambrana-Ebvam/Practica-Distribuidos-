@@ -9,3 +9,36 @@
 .con-page table {
   margin-top: 12px;
 }
+
+.con-preaviso-summary {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.con-preaviso-summary div {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.con-preaviso-summary span {
+  display: block;
+  margin-bottom: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.con-preaviso-summary strong {
+  color: #0f172a;
+  font-size: 20px;
+}
+
+@media (max-width: 800px) {
+  .con-preaviso-summary {
+    grid-template-columns: 1fr;
+  }
+}

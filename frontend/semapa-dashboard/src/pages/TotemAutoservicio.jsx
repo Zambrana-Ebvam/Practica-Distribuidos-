@@ -5,11 +5,16 @@ import { formatMoney, formatNumber } from "../utils/formatters";
 
 import "../styles/tot_totem_autoservicio.css";
 
-function TotemAutoservicio({ periodo }) {
+function TotemAutoservicio({ periodo, periodoInicial }) {
   const [totemCuenta, setTotemCuenta] = useState("");
+  const [totemPeriodo, setTotemPeriodo] = useState(
+    periodo || periodoInicial || "2026-04"
+  );
   const [totemResultado, setTotemResultado] = useState(null);
   const [totemError, setTotemError] = useState("");
   const [totemLoading, setTotemLoading] = useState(false);
+
+  const activePeriod = periodo || totemPeriodo || periodoInicial || "2026-04";
 
   async function consultarTotem(e) {
     e.preventDefault();
@@ -27,7 +32,7 @@ function TotemAutoservicio({ periodo }) {
       setTotemError("");
       setTotemResultado(null);
 
-      const data = await consultarCuentaTotem(cuenta, periodo);
+      const data = await consultarCuentaTotem(cuenta, activePeriod);
 
       setTotemResultado(data);
     } catch (error) {
@@ -57,6 +62,15 @@ function TotemAutoservicio({ periodo }) {
             onChange={(e) => setTotemCuenta(e.target.value)}
             placeholder="Ejemplo: CT-00000001"
           />
+
+          <select
+            value={activePeriod}
+            onChange={(e) => setTotemPeriodo(e.target.value)}
+          >
+            <option value="2026-04">2026-04</option>
+            <option value="2026-03">2026-03</option>
+            <option value="2026-02">2026-02</option>
+          </select>
 
           <button type="submit" disabled={totemLoading}>
             {totemLoading ? "Consultando..." : "Consultar"}
@@ -136,6 +150,32 @@ function TotemAutoservicio({ periodo }) {
             </div>
 
             <div className="tot-message">{totemResultado.mensaje}</div>
+
+            <div className="tot-tariff">
+              <h2>Detalle tarifario</h2>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>Concepto</th>
+                    <th>m3</th>
+                    <th>Tarifa Bs</th>
+                    <th>Subtotal</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {(totemResultado.detalle_tarifario || []).map((item) => (
+                    <tr key={`${item.concepto}-${item.subtotal}`}>
+                      <td>{item.concepto}</td>
+                      <td>{formatNumber(item.m3)}</td>
+                      <td>{formatMoney(item.tarifa)}</td>
+                      <td>{formatMoney(item.subtotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

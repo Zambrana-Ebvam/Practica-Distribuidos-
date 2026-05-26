@@ -59,19 +59,64 @@ function DashboardContabilidad({ contabilidad, periodo }) {
         />
 
         <KpiCard
-          title="Preavisos emitidos"
+          title="Preavisos planificados"
           value={formatNumber(contabilidad?.kpis?.preavisos_emitidos)}
-          subtitle={`${formatNumber(contabilidad?.kpis?.cuentas_morosas)} cuentas morosas`}
+          subtitle={`${formatMoney(
+            contabilidad?.kpis?.monto_preavisos_mensual_bs ??
+              contabilidad?.kpis?.cartera_vencida_bs
+          )} monto mensual`}
         />
 
         <KpiCard
-          title="Mejor canal"
-          value={contabilidad?.kpis?.mejor_canal_cobranza || "SIN DATOS"}
-          subtitle="Canal con mayor recuperación estimada"
+          title="Preavisos enviados"
+          value={formatNumber(contabilidad?.kpis?.preavisos_enviados_rabbitmq)}
+          subtitle={`${formatNumber(
+            contabilidad?.kpis?.mensajes_enviados_rabbitmq
+          )} mensajes RabbitMQ`}
         />
       </div>
 
       <div className="lay-dashboard-grid">
+        <div className="lay-panel">
+          <h3>Monto facturado / preavisos mensual</h3>
+
+          <div className="con-preaviso-summary">
+            <div>
+              <span>Monto facturado mensual</span>
+              <strong>{formatMoney(contabilidad?.kpis?.monto_facturado_bs)}</strong>
+            </div>
+
+            <div>
+              <span>Monto en preavisos</span>
+              <strong>
+                {formatMoney(
+                  contabilidad?.kpis?.monto_preavisos_mensual_bs ??
+                    contabilidad?.kpis?.cartera_vencida_bs
+                )}
+              </strong>
+            </div>
+
+            <div>
+              <span>Preavisos emitidos</span>
+              <strong>{formatNumber(contabilidad?.kpis?.preavisos_emitidos)}</strong>
+            </div>
+
+            <div>
+              <span>Enviados por RabbitMQ</span>
+              <strong>
+                {formatNumber(contabilidad?.kpis?.preavisos_enviados_rabbitmq)}
+              </strong>
+            </div>
+
+            <div>
+              <span>Monto con evidencia RabbitMQ</span>
+              <strong>
+                {formatMoney(contabilidad?.kpis?.monto_preavisos_enviados_bs)}
+              </strong>
+            </div>
+          </div>
+        </div>
+
         <div className="lay-panel">
           <h3>Facturación por tarifa</h3>
 
