@@ -229,10 +229,9 @@ def preparar_factura_cuenta(detalle, consumo_periodo):
 
 def limpiar_nombre_archivo(texto):
     texto = str(texto)
-    texto = re.sub(r"[^a-zA-Z0-9_-]", "_", texto)
-    return texto[:80]
-
-
+    nombre, ext = os.path.splitext(texto)
+    nombre = re.sub(r"[^a-zA-Z0-9_-]", "_", nombre)
+    return (nombre + ext)[:80]
 
 
 def crear_qr(texto):

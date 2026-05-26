@@ -310,10 +310,10 @@ function combinarContabilidad(datosPorDistrito, periodoActual) {
     conversion_pct:
       toNumber(c.monto_cartera_bs) > 0
         ? round2(
-            (toNumber(c.recuperacion_estimada_bs) /
-              toNumber(c.monto_cartera_bs)) *
-              100
-          )
+          (toNumber(c.recuperacion_estimada_bs) /
+            toNumber(c.monto_cartera_bs)) *
+          100
+        )
         : 0,
   }));
 
@@ -514,8 +514,7 @@ function App() {
   useEffect(() => {
     if (isTotemRoute) return;
     if (!usuario) return;
-    if (tab !== "mapa") return;
-    if (!tabsPermitidos.includes("mapa")) return;
+    if (tab !== "mapa" && tab !== "alcaldia") return;
 
     if (distritos.length > 0 && cuentasMapa.length === 0 && !mapaLoading) {
       cargarCuentasMapa(distritos);
@@ -1279,6 +1278,8 @@ function App() {
               alcaldia={alcaldia}
               distritoActual={distritoActual}
               onDistritoClick={setDistrito}
+              geojson={geojson}
+              cuentas={cuentasMapa}
             />
           ) : (
             <div className="lay-state-box lay-state-error">

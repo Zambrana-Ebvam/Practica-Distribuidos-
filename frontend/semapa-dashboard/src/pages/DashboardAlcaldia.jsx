@@ -15,7 +15,7 @@ import { formatNumber } from "../utils/formatters";
 
 import "../styles/alc_dashboard_alcaldia.css";
 
-function DashboardAlcaldia({ alcaldia, distritoActual, onDistritoClick }) {
+function DashboardAlcaldia({ alcaldia, distritoActual, onDistritoClick, geojson, cuentas }) {
   return (
     <section className="alc-page">
       <h2>Dashboard 1 - Alcaldía Municipal / Smart City</h2>
@@ -69,6 +69,8 @@ function DashboardAlcaldia({ alcaldia, distritoActual, onDistritoClick }) {
             distritos={alcaldia?.distritos || []}
             distritoActual={distritoActual}
             onDistritoClick={onDistritoClick}
+            geojson={geojson}
+            cuentas={cuentas}
           />
         </div>
 

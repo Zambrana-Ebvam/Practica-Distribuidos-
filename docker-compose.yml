@@ -77,7 +77,7 @@ services:
     container_name: semapa-worker-mensajes
     depends_on:
       - rabbitmq
-    command: ["python", "app/worker_mensajes.py"]
+    command: [ "python", "app/worker_mensajes.py" ]
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_QUEUE=semapa_preavisos

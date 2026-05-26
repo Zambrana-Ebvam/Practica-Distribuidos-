@@ -26,3 +26,106 @@
   font-size: 0.8rem;
   min-width: 1000px;
 }
+.map-heat-container {
+  width: 100%;
+}
+
+.map-heat-map {
+  height: 440px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid #dbeafe;
+}
+
+.map-heat-legend {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #eff6ff, #f8fafc);
+  border: 1px solid #bfdbfe;
+  color: #0f172a;
+}
+
+.map-heat-legend strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.map-heat-legend span {
+  display: block;
+  font-size: 12px;
+  color: #475569;
+  font-weight: 700;
+}
+
+.map-heat-popup {
+  width: 270px;
+}
+
+.map-heat-popup h3 {
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.map-heat-popup p {
+  margin: 5px 0;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.map-heat-popup hr {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 10px 0;
+}
+
+.map-heat-popup small {
+  display: block;
+  color: #64748b;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.map-heat-popup button {
+  width: 100%;
+  margin-top: 10px;
+  border: none;
+  border-radius: 12px;
+  padding: 10px;
+  background: linear-gradient(135deg, #0ea5e9, #0369a1);
+  color: white;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.map-heat-badge {
+  display: inline-block;
+  margin: 8px 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+}
+
+.map-heat-badge-blue {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+
+.map-heat-badge-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.map-heat-badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.map-heat-badge-danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
